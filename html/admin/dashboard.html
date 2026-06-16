@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Admin Dashboard – Hojozat</title>
+<link rel="stylesheet" href="css/admin.css"/>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="overlay" class="overlay"></div>
+<div class="admin-layout">
+<aside class="admin-sidebar" id="sidebar">
+  <div class="logo">
+    <div class="logo-box">H</div>
+    <div><div style="font-weight:900;font-size:1rem">Hojozat</div><div style="font-size:.7rem;color:var(--muted)">Admin Panel</div></div>
+  </div>
+  <nav>
+    <a href="dashboard.html" class="nav-item active"><span>📊</span> Dashboard</a>
+    <a href="institutions.html" class="nav-item"><span>🏥</span> Institutions <span class="nav-badge" id="pending-badge" style="display:none"></span></a>
+    <a href="users.html" class="nav-item"><span>👥</span> Users</a>
+    <a href="queues.html" class="nav-item"><span>🎫</span> Queues</a>
+  </nav>
+  <div class="footer">
+    <button class="nav-item" onclick="AdminAuth.logout()"><span>🚪</span> Logout</button>
+  </div>
+</aside>
+<main class="admin-main">
+  <div class="admin-topbar">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('overlay').classList.toggle('visible')">☰</button>
+      <h1>📊 Dashboard</h1>
+    </div>
+    <div style="font-size:.85rem;color:var(--muted)" id="admin-name"></div>
+  </div>
+  <div class="admin-content">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem" id="charts-row">
+      <div class="card"><div class="card-header"><h2>🏥 Verification Status</h2></div><div class="card-body" id="status-chart" style="min-height:200px"></div></div>
+      <div class="card"><div class="card-header"><h2>📈 Activity</h2></div><div class="card-body" id="activity-info" style="min-height:200px"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>⏳ Pending Verification</h2><a href="institutions.html?status=pending" class="btn btn-ghost btn-sm">View All →</a></div>
+      <div class="card-body" id="pending-list"></div>
+    </div>
+  </div>
+</main>
+</div>
+<script src="js/admin.js"></script>
+<script>
+const admin = AdminAuth.require();
+document.getElementById('admin-name').textContent = admin ? `👤 ${admin.name}` : '';
+document.getElementById('overlay').addEventListener('click',()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('visible');});
+
+async function loadDashboard() {
+  try {
+    const stats = await AdminAPI.get('/stats');
+    document.getElementById('stat-grid').innerHTML = [
+      { icon:'🏥', val:stats.totalInstitutions, label:'Total Institutions', bg:'#3b82f6' },
+      { icon:'✅', val:stats.verified,           label:'Verified',           bg:'#22c55e' },
+      { icon:'⏳', val:stats.pending,            label:'Pending',            bg:'#f59e0b' },
+      { icon:'❌', val:stats.rejected,           label:'Rejected',           bg:'#ef4444' },
+      { icon:'👥', val:stats.totalUsers,         label:'Total Users',        bg:'#8b5cf6' },
+      { icon:'🎫', val:stats.activeQueues,       label:'Active Queues',      bg:'#06b6d4' },
+      { icon:'⏱️', val:stats.totalWaiting,       label:'Waiting Now',        bg:'#f43f5e' },
+      { icon:'📊', val:stats.totalServedToday,   label:'Served Today',       bg:'#10b981' }
+    ].map(s => `<div class="stat-card"><div class="icon">${s.icon}</div><div class="value" style="color:${s.bg}">${s.val}</div><div class="label">${s.label}</div></div>`).join('');
+
+    const pb = document.getElementById('pending-badge');
+    if (stats.pending > 0) { pb.textContent = stats.pending; pb.style.display = ''; } else pb.style.display = 'none';
+
+    // Status chart (simple bar)
+    const total = stats.totalInstitutions || 1;
+    document.getElementById('status-chart').innerHTML = [
+      { label:'Verified', val:stats.verified, color:'#22c55e' },
+      { label:'Pending',  val:stats.pending,  color:'#f59e0b' },
+      { label:'Rejected', val:stats.rejected, color:'#ef4444' },
+      { label:'Suspended',val:stats.suspended,color:'#8b5cf6' }
+    ].map(b => `<div style="margin-bottom:.75rem"><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.3rem"><span>${b.label}</span><span style="font-weight:700">${b.val}</span></div><div style="height:8px;background:var(--card2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(b.val/total*100)}%;background:${b.color};border-radius:4px;transition:width .5s"></div></div></div>`).join('');
+
+    document.getElementById('activity-info').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:1rem;padding:.5rem 0">
+        <div style="display:flex;align-items:center;gap:.75rem"><span style="font-size:1.5rem">🎫</span><div><div style="font-weight:700;font-size:1.1rem">${stats.activeQueues}</div><div style="font-size:.8rem;color:var(--muted)">Active queues right now</div></div></div>
+        <div style="display:flex;align-items:center;gap:.75rem"><span style="font-size:1.5rem">⏱️</span><div><div style="font-weight:700;font-size:1.1rem">${stats.totalWaiting}</div><div style="font-size:.8rem;color:var(--muted)">Patients currently waiting</div></div></div>
+        <div style="display:flex;align-items:center;gap:.75rem"><span style="font-size:1.5rem">✅</span><div><div style="font-weight:700;font-size:1.1rem">${stats.totalServedToday}</div><div style="font-size:.8rem;color:var(--muted)">Patients served today</div></div></div>
+      </div>`;
+  } catch(e) { Toast.error('Failed to load dashboard'); }
+
+  try {
+    const res = await AdminAPI.get('/institutions', { status:'pending', limit:5 });
+    const list = res.institutions || [];
+    if (!list.length) { document.getElementById('pending-list').innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>No pending institutions</p></div>'; return; }
+    document.getElementById('pending-list').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Category</th><th>Owner</th><th>Date</th><th>Actions</th></tr></thead><tbody>' +
+      list.map(i => `<tr>
+        <td style="font-weight:600">${escHtml(i.name)}</td>
+        <td style="text-transform:capitalize">${i.category||'—'}</td>
+        <td>${escHtml(i.owner?.name||'—')}</td>
+        <td>${formatDate(i.createdAt)}</td>
+        <td class="actions-cell"><a href="institutions.html?review=${i._id}" class="btn btn-primary btn-sm">Review</a></td>
+      </tr>`).join('') + '</tbody></table></div>';
+  } catch {}
+}
+loadDashboard();
+</script>
+</body>
+</html>

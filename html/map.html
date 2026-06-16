@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Map – Hojozat</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/styles.css" />
+    <style>
+        html, body { height: 100%; overflow: hidden; }
+        .map-layout { display: flex; flex-direction: column; height: 100vh; background: var(--color-bg); }
+        /* Header */
+        .map-header  { flex-shrink: 0; background: var(--color-card); border-bottom: 1px solid var(--color-border); z-index: 40; }
+        .header-row1 { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; height: 3.5rem; }
+        .header-row2 { display: flex; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; overflow-x: auto; }
+        .header-row2::-webkit-scrollbar { height: 0; }
+        .logo-box    { width: 2rem; height: 2rem; background: linear-gradient(135deg,#3b82f6,#7c3aed); border-radius: 0.5rem; display:flex; align-items:center; justify-content:center; color:white; font-weight:900; font-size:0.9rem; flex-shrink:0; }
+        .search-wrap { flex: 1; max-width: 28rem; position: relative; }
+        .search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none; }
+        .search-input { padding-left: 2.25rem; padding-top: 0.5rem; padding-bottom: 0.5rem; font-size: 0.875rem; }
+        .view-toggle { display: flex; gap: 0.25rem; padding: 0.25rem; border-radius: 0.75rem; background: var(--color-border); }
+        .cat-btn { flex-shrink: 0; padding: 0.375rem 0.75rem; font-size: 0.8rem; border-radius: 0.625rem; font-weight: 600; cursor: pointer; border: none; white-space: nowrap; }
+        /* Body */
+        .map-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+        /* Sidebar */
+        .inst-sidebar {
+            width: 20rem; flex-shrink: 0; overflow-y: auto; background: var(--color-bg);
+            position: absolute; left: 0; top: 0; bottom: 0; z-index: 30;
+            transform: translateX(-100%); transition: transform 0.3s ease;
+        }
+        .inst-sidebar.visible   { transform: translateX(0); }
+        .inst-sidebar.list-mode { position: static; transform: none; width: 100%; }
+        /* Map */
+        #map { flex: 1; height: 100%; }
+        .map-container { flex: 1; position: relative; overflow: hidden; }
+        .toggle-sidebar-btn { position: absolute; top: 0.75rem; left: 0.75rem; z-index: 40; }
+        /* Institution Card */
+        .inst-card { padding: 1rem; margin: 0.375rem; border-radius: 1rem; background: var(--color-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-card); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .inst-card:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+        .inst-icon { width: 3rem; height: 3rem; border-radius: 0.75rem; background: rgba(59,130,246,0.1); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; }
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; z-index: 50; display: none; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 1rem; }
+        @media (min-width: 640px) { .modal-overlay { align-items: center; } }
+        .modal-overlay.visible { display: flex; }
+        .modal-box    { background: var(--color-card); border-radius: 1rem; border: 1px solid var(--color-border); width: 100%; max-width: 28rem; max-height: 85vh; overflow-y: auto; animation: slideUpModal 0.3s ease; }
+        .position-card { padding: 1rem; border-radius: 1rem; text-align: center; background: linear-gradient(135deg,#3b82f6,#1d4ed8); color: white; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<div class="map-layout">
+    <!-- Header -->
+    <header class="map-header">
+        <div class="header-row1">
+            <a href="index.html" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;flex-shrink:0;">
+                <div class="logo-box">H</div>
+                <span class="font-black gradient-text" style="font-size:0.95rem;display:none" id="logo-text">Hojozat</span>
+            </a>
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="map-search" class="input search-input" placeholder="Search institutions..." />
+            </div>
+            <div class="view-toggle">
+                <button class="btn btn-primary cat-btn" id="view-map" style="padding:0.375rem 0.625rem;">🗺️ <span class="hide-mobile">Map</span></button>
+                <button class="btn btn-ghost   cat-btn" id="view-list" style="padding:0.375rem 0.625rem;">📋 <span class="hide-mobile">List</span></button>
+            </div>
+            <button data-toggle-theme data-theme-icon class="btn btn-ghost" style="padding:0.5rem;font-size:1.1rem;">🌙</button>
+            <div id="nav-dashboard-wrap"></div>
+        </div>
+        <!-- Category filters -->
+        <div class="header-row2" id="cat-filters"></div>
+    </header>
+
+    <!-- Body -->
+    <div class="map-body">
+        <!-- Institutions Panel -->
+        <div class="inst-sidebar" id="inst-sidebar">
+            <div id="inst-list" style="padding:0.5rem;"></div>
+        </div>
+
+        <!-- Map Container -->
+        <div class="map-container" id="map-container">
+            <button class="toggle-sidebar-btn btn btn-secondary" id="sidebar-toggle" style="padding:0.5rem 0.75rem;font-size:0.875rem;box-shadow:0 4px 16px rgba(0,0,0,0.15);">
+                ◀ Hide
+            </button>
+            <button class="locate-me-btn" id="locate-me-btn" title="Locate Me">📍</button>
+            <button class="clear-route-btn" id="clear-route-btn" title="Clear Route" style="display:none;">✕</button>
+            <div id="route-info-panel" class="route-info-panel" style="display:none;"></div>
+            <div id="geo-error" class="geo-error-banner" style="display:none;"></div>
+            <div id="map" style="width:100%;height:100%;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Institution Modal -->
+<div class="modal-overlay" id="inst-modal">
+    <div class="modal-box" id="modal-box">
+        <div style="padding:1.5rem;" id="modal-content">Loading...</div>
+    </div>
+</div>
+
+<!-- Leaflet + Socket.io + Routing -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+const CATEGORY_ICONS = { clinic:'🏥', hospital:'🏨', pharmacy:'💊', laboratory:'🔬', dental:'🦷', specialist:'👨‍⚕️', other:'🏥', all:'🌐' };
+const CATEGORIES      = ['all','clinic','hospital','pharmacy','laboratory','dental','specialist'];
+const STATUS_CONFIG   = { open:{label:'Open',cls:'status-open'}, closed:{label:'Closed',cls:'status-closed'}, busy:{label:'Busy',cls:'status-busy'} };
+const DEMO_INSTITUTIONS = [
+    { _id:'1', name:'Clinique El Shifa', category:'clinic', currentQueueSize:8, averageRating:4.5, totalReviews:120, location:{ coordinates:[3.0588,36.7538], address:'Rue Didouche Mourad, Algiers' }, queueSettings:{ isQueueOpen:true, maxQueueSize:30, avgServiceTime:15 } },
+    { _id:'2', name:'Hôpital Mustapha Pacha', category:'hospital', currentQueueSize:45, averageRating:3.2, totalReviews:450, location:{ coordinates:[3.0620,36.7490], address:'El Madania, Algiers' }, queueSettings:{ isQueueOpen:true, maxQueueSize:200, avgServiceTime:30 } },
+    { _id:'3', name:'Pharmacie Centrale', category:'pharmacy', currentQueueSize:4, averageRating:4.1, totalReviews:80, location:{ coordinates:[3.0650,36.7560], address:'Boulevard Zighout Youcef' }, queueSettings:{ isQueueOpen:true, maxQueueSize:20, avgServiceTime:5 } },
+    { _id:'4', name:'Laboratoire Bio-Analyse', category:'laboratory', currentQueueSize:12, averageRating:4.3, totalReviews:95, location:{ coordinates:[3.0700,36.7380], address:'Rue Belouizdad' }, queueSettings:{ isQueueOpen:true, maxQueueSize:40, avgServiceTime:10 } },
+    { _id:'5', name:'Cabinet Dentaire Dr. Benali', category:'dental', currentQueueSize:3, averageRating:4.8, totalReviews:60, location:{ coordinates:[3.0540,36.7610], address:'Bir Mourad Raïs, Algiers' }, queueSettings:{ isQueueOpen:false, maxQueueSize:15, avgServiceTime:30 } },
+];
+
+// ── State ──
+let map, markers = {}, institutions = [], activeQueues = [], userLocation = null;
+let selectedInstitution = null, currentCategory = 'all', currentSearch = '', sidebarVisible = true;
+let userMarker = null, userLocated = false, routeLayer = null, routeInfoData = null, travelMode = 'driving';
+const defaultCenter = { lat: 36.7538, lng: 3.0588 };
+const currentUser = Auth.getUser();
+
+// ── Nav ──
+(function() {
+    const wrap = document.getElementById('nav-dashboard-wrap');
+    if (currentUser) {
+        const href = currentUser.role === 'institution' ? 'institution/dashboard.html' : 'dashboard.html';
+        wrap.innerHTML = `<a href="${href}" class="btn btn-primary" style="padding:0.375rem 0.625rem;font-size:0.8rem;">📊 Dashboard</a>`;
+    } else {
+        wrap.innerHTML = `<a href="auth/login.html" class="btn btn-primary" style="padding:0.375rem 0.625rem;font-size:0.8rem;">Login</a>`;
+    }
+    if (window.innerWidth > 640) document.getElementById('logo-text').style.display = '';
+})();
+
+// ── Category filters ──
+(function() {
+    const container = document.getElementById('cat-filters');
+    container.innerHTML = CATEGORIES.map(cat => `
+        <button class="cat-btn btn ${cat==='all'?'btn-primary':'btn-secondary'}" id="cat-${cat}" data-cat="${cat}">
+            ${CATEGORY_ICONS[cat]} ${cat}
+        </button>
+    `).join('');
+    
+    // Bind listeners
+    container.querySelectorAll('[data-cat]').forEach(btn => {
+        btn.addEventListener('click', () => setCategory(btn.dataset.cat));
+    });
+})();
+
+function setCategory(cat) {
+    currentCategory = cat;
+    CATEGORIES.forEach(c => {
+        const btn = document.getElementById('cat-' + c);
+        btn.className = 'cat-btn btn ' + (c === cat ? 'btn-primary' : 'btn-secondary');
+    });
+    fetchInstitutions();
+}
+
+// ── View toggle ──
+function setView(v) {
+    const sidebar   = document.getElementById('inst-sidebar');
+    const mapCont   = document.getElementById('map-container');
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    if (v === 'list') {
+        sidebar.classList.add('list-mode');
+        sidebar.classList.add('visible');
+        mapCont.style.display = 'none';
+        toggleBtn.style.display = 'none';
+        document.getElementById('view-list').className = 'btn btn-primary cat-btn';
+        document.getElementById('view-map').className  = 'btn btn-ghost   cat-btn';
+    } else {
+        sidebar.classList.remove('list-mode');
+        mapCont.style.display = '';
+        toggleBtn.style.display = '';
+        document.getElementById('view-map').className  = 'btn btn-primary cat-btn';
+        document.getElementById('view-list').className = 'btn btn-ghost   cat-btn';
+        if (sidebarVisible) sidebar.classList.add('visible');
+        setTimeout(() => map?.invalidateSize(), 310);
+    }
+}
+
+// ── Sidebar toggle ──
+function toggleSidebar() {
+    const sidebar = document.getElementById('inst-sidebar');
+    const btn     = document.getElementById('sidebar-toggle');
+    sidebarVisible = !sidebarVisible;
+    sidebar.classList.toggle('visible', sidebarVisible);
+    btn.textContent = sidebarVisible ? '◀ Hide' : '☰ List';
+    setTimeout(() => map?.invalidateSize(), 310);
+}
+
+// ── Init sidebar as visible ──
+document.getElementById('inst-sidebar').classList.add('visible');
+
+// ── Fetch institutions ──
+async function fetchInstitutions() {
+    try {
+        const params = { category: currentCategory, search: currentSearch };
+        if (userLocation) { params.lat = userLocation.lat; params.lng = userLocation.lng; params.radius = 50000; }
+        const res = await API.get('/institutions', { params });
+        institutions = res.institutions || [];
+    } catch {
+        institutions = DEMO_INSTITUTIONS;
+    }
+    const filtered = filterInstitutions();
+    renderList(filtered);
+    renderMapMarkers(filtered);
+}
+
+function filterInstitutions() {
+    return institutions.filter(inst => {
+        if (currentSearch && !inst.name.toLowerCase().includes(currentSearch.toLowerCase())) return false;
+        return true;
+    });
+}
+
+// ── Fetch active queues ──
+async function fetchActiveQueues() {
+    if (!currentUser) return;
+    try {
+        const res = await API.get('/users/queues/active');
+        activeQueues = (res.activeQueues || []).map(q => q.institutionId);
+    } catch {}
+}
+
+// ── Render list ──
+function renderList(insts) {
+    const container = document.getElementById('inst-list');
+    if (!insts.length) {
+        container.innerHTML = `<div style="text-align:center;padding:3rem;"><div style="font-size:3rem;margin-bottom:0.75rem;">🔍</div><p style="color:var(--color-text-muted);">No institutions found</p></div>`;
+        return;
+    }
+    container.innerHTML = insts.map(inst => instCardHTML(inst)).join('');
+    container.querySelectorAll('[data-inst-id]').forEach(card => {
+        card.addEventListener('click', e => {
+            if (!e.target.closest('[data-join]')) {
+                const inst = institutions.find(i => i._id === card.dataset.instId);
+                if (inst?.location?.coordinates) {
+                    const [lng, lat] = inst.location.coordinates;
+                    if (lat && lng && map) map.setView([lat, lng], 16, { animate: true });
+                }
+                openModal(card.dataset.instId);
+            }
+        });
+    });
+    container.querySelectorAll('[data-join]').forEach(btn => {
+        btn.addEventListener('click', e => { e.stopPropagation(); joinQueue(btn.dataset.join); });
+    });
+}
+
+function getStatus(inst) {
+    if (!inst.queueSettings?.isQueueOpen) return 'closed';
+    if (inst.currentQueueSize >= inst.queueSettings?.maxQueueSize * 0.8) return 'busy';
+    return 'open';
+}
+
+function instCardHTML(inst) {
+    const status   = getStatus(inst);
+    const cfg      = STATUS_CONFIG[status];
+    const inQueue  = activeQueues.includes(inst._id);
+    const waitMin  = (inst.currentQueueSize||0) * (inst.queueSettings?.avgServiceTime||10);
+    const distHTML = getDistanceHTML(inst);
+    return `<div class="inst-card" data-inst-id="${inst._id}">
+        <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+            <div class="inst-icon">${CATEGORY_ICONS[inst.category]||'📍'}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.25rem;">
+                    <h3 style="font-weight:700;font-size:0.875rem;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${inst.name}</h3>
+                    <span class="badge ${cfg.cls}" style="flex-shrink:0;">${cfg.label}</span>
+                </div>
+                <p style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:0.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${inst.location?.address||''}</p>
+                <div style="display:flex;gap:0.875rem;font-size:0.75rem;color:var(--color-text-muted);flex-wrap:wrap;align-items:center;">
+                    <span>👥 ${inst.currentQueueSize||0}</span>
+                    <span>⏱️ ~${waitMin}m</span>
+                    ${inst.averageRating>0?`<span>⭐ ${inst.averageRating.toFixed(1)}</span>`:''}
+                    ${distHTML}
+                </div>
+            </div>
+        </div>
+        ${status==='open'&&!inQueue ? `<button class="btn btn-success w-full" style="margin-top:0.75rem;font-size:0.875rem;padding:0.5rem;" data-join="${inst._id}">🎫 Join Queue</button>` : ''}
+        ${inQueue ? `<div style="margin-top:0.75rem;padding:0.5rem;border-radius:0.75rem;text-align:center;font-size:0.875rem;font-weight:600;color:#3b82f6;background:rgba(59,130,246,0.1);">✅ You're in this queue</div>` : ''}
+    </div>`;
+}
+
+// ── Distance helpers ──
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getDistanceHTML(inst) {
+    if (!userLocation || !inst.location?.coordinates) return '';
+    const [lng, lat] = inst.location.coordinates;
+    if (!lat || !lng) return '';
+    const dist = haversineDistance(userLocation.lat, userLocation.lng, lat, lng);
+    const label = dist < 1 ? `${Math.round(dist*1000)}m` : `${dist.toFixed(1)}km`;
+    return `<span class="distance-badge">📏 ${label}</span>`;
+}
+
+// ── Geolocation ──
+function showGeoError(msg) {
+    const el = document.getElementById('geo-error');
+    el.innerHTML = `⚠️ ${msg} <button onclick="this.parentElement.style.display='none'">✕</button>`;
+    el.style.display = 'flex';
+    setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+function locateUser() {
+    if (!navigator.geolocation) { showGeoError('Geolocation is not supported by your browser.'); return; }
+    const btn = document.getElementById('locate-me-btn');
+    btn.classList.add('loading');
+    btn.textContent = '⏳';
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            userLocated = true;
+            btn.classList.remove('loading');
+            btn.textContent = '📍';
+            placeUserMarker();
+            map.setView([userLocation.lat, userLocation.lng], 14, { animate: true });
+            Toast.success('📍 Location detected!');
+            const filtered = filterInstitutions();
+            renderList(filtered);
+        },
+        err => {
+            btn.classList.remove('loading');
+            btn.textContent = '📍';
+            const msgs = {
+                1: 'Location permission denied. Please enable it in your browser settings.',
+                2: 'GPS is unavailable. Try again later.',
+                3: 'Location request timed out. Please try again.'
+            };
+            showGeoError(msgs[err.code] || 'Could not detect your location.');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+}
+
+function placeUserMarker() {
+    if (!userLocation) return;
+    if (userMarker) { userMarker.setLatLng([userLocation.lat, userLocation.lng]); return; }
+    const icon = L.divIcon({
+        html: '<div class="user-location-dot"></div>',
+        iconSize: [18, 18], iconAnchor: [9, 9], className: ''
+    });
+    userMarker = L.marker([userLocation.lat, userLocation.lng], { icon, zIndexOffset: 1000 })
+        .addTo(map).bindPopup('📍 You are here');
+}
+
+// ── Routing (OSRM – free, no API key) ──
+async function showRoute(instLat, instLng, mode) {
+    if (!userLocation) { Toast.info('Click 📍 to detect your location first.'); return; }
+    clearRoute();
+    travelMode = mode || travelMode;
+    const profile = travelMode === 'walking' ? 'foot' : 'car';
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${userLocation.lng},${userLocation.lat};${instLng},${instLat}?overview=full&geometries=geojson&steps=true`;
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.routes?.length) { Toast.error('No route found.'); return; }
+        const route = data.routes[0];
+        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        routeLayer = L.polyline(coords, {
+            color: '#3b82f6', weight: 5, opacity: 0.85,
+            dashArray: travelMode === 'walking' ? '8,12' : null,
+            lineCap: 'round', lineJoin: 'round'
+        }).addTo(map);
+        map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+        const distKm = (route.distance / 1000).toFixed(1);
+        const durMin = Math.round(route.duration / 60);
+        routeInfoData = { distance: distKm, duration: durMin };
+        renderRoutePanel(distKm, durMin);
+        document.getElementById('clear-route-btn').style.display = 'flex';
+    } catch {
+        Toast.error('Failed to fetch route. Check your connection.');
+    }
+}
+
+function renderRoutePanel(distKm, durMin) {
+    const panel = document.getElementById('route-info-panel');
+    panel.innerHTML = `
+        <div class="route-stat"><div class="val">📏 ${distKm} km</div><div class="lbl">Distance</div></div>
+        <div class="divider"></div>
+        <div class="route-stat"><div class="val">⏱️ ${durMin} min</div><div class="lbl">${travelMode === 'walking' ? 'Walking' : 'Driving'}</div></div>
+        <div class="divider"></div>
+        <div class="travel-mode-toggle">
+            <button class="${travelMode==='driving'?'active':''}" onclick="switchMode('driving')">🚗</button>
+            <button class="${travelMode==='walking'?'active':''}" onclick="switchMode('walking')">🚶</button>
+        </div>`;
+    panel.style.display = 'flex';
+}
+
+function switchMode(mode) {
+    if (!selectedInstitution) return;
+    const [lng, lat] = selectedInstitution.location.coordinates;
+    travelMode = mode;
+    showRoute(lat, lng, mode);
+}
+
+function clearRoute() {
+    if (routeLayer) { routeLayer.remove(); routeLayer = null; }
+    document.getElementById('route-info-panel').style.display = 'none';
+    document.getElementById('clear-route-btn').style.display = 'none';
+    routeInfoData = null;
+}
+
+// ── Map ──
+function initMap() {
+    const center = userLocation || defaultCenter;
+    map = L.map('map', { zoomControl: true }).setView([center.lat, center.lng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(map);
+    if (userLocation) placeUserMarker();
+}
+
+function renderMapMarkers(insts) {
+    Object.values(markers).forEach(m => m.remove());
+    markers = {};
+    insts.forEach(inst => {
+        const [lng, lat] = inst.location?.coordinates || [0, 0];
+        if (!lat || !lng) return;
+        const status   = getStatus(inst);
+        const colors   = { open:'#22c55e', closed:'#ef4444', busy:'#f59e0b' };
+        const color    = colors[status] || '#64748b';
+        const icon = L.divIcon({
+            html: `<div style="width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);"><div style="width:100%;height:100%;border-radius:50% 50% 50% 0;display:flex;align-items:center;justify-content:center;transform:rotate(45deg);font-size:14px;">${CATEGORY_ICONS[inst.category]||'📍'}</div></div>`,
+            iconSize:[36,36], iconAnchor:[18,36], className:''
+        });
+        const marker = L.marker([lat, lng], { icon }).addTo(map);
+        marker.on('click', () => openModal(inst._id));
+        markers[inst._id] = marker;
+    });
+}
+
+// ── Modal ──
+async function openModal(instId) {
+    const inst = institutions.find(i => i._id === instId);
+    if (!inst) return;
+    selectedInstitution = inst;
+    document.getElementById('inst-modal').classList.add('visible');
+    renderModal(inst, null, null, null, true);
+    try {
+        const [instRes, queueRes] = await Promise.all([
+            API.get(`/institutions/${instId}`),
+            API.get(`/queues/${instId}`)
+        ]);
+        renderModal(inst, instRes.queueInfo, instRes.userPosition, queueRes.inService, false);
+    } catch {
+        renderModal(inst, { currentSize: inst.currentQueueSize||0, estimatedWait: 0 }, null, null, false);
+    }
+}
+
+function renderModal(inst, queueInfo, userPosition, inService, loading) {
+    const status = queueInfo?.status || getStatus(inst);
+    const cfg    = STATUS_CONFIG[status] || STATUS_CONFIG.closed;
+    const inQueue = activeQueues.includes(inst._id);
+    const inServiceHTML = inService
+        ? `<div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:.75rem;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem">
+            <span style="font-weight:700;color:#15803d">🩺 Now serving:</span>
+            <span style="color:var(--color-text);margin-left:.375rem">${inService.displayName} (Ticket #${inService.ticketNumber})</span>
+          </div>`
+        : '';
+    document.getElementById('modal-content').innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="width:3.5rem;height:3.5rem;border-radius:0.875rem;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;font-size:1.75rem;">${CATEGORY_ICONS[inst.category]||'📍'}</div>
+                <div>
+                    <h2 style="font-size:1.1rem;font-weight:900;color:var(--color-text);">${inst.name}</h2>
+                    <p style="font-size:0.875rem;color:var(--color-text-muted);text-transform:capitalize;">${inst.category}</p>
+                    ${inst.contact?.phone ? `<p style="font-size:.8rem;color:var(--color-text-muted)">📞 ${inst.contact.phone}</p>` : ''}
+                </div>
+            </div>
+            <button data-action="close-modal" class="btn btn-ghost" style="padding:0.5rem;font-size:1rem;">✕</button>
+        </div>
+
+        <div class="badge ${cfg.cls}" style="margin-bottom:1rem;display:flex;justify-content:space-between;padding:0.75rem 1rem;border-radius:0.75rem;width:100%;">
+            <span style="font-weight:700;">${cfg.label} – ${inst.location?.address||'No address'}</span>
+            ${inst.averageRating>0?`<span>⭐ ${inst.averageRating.toFixed(1)}</span>`:''}
+        </div>
+
+        ${loading ? '<div style="text-align:center;padding:1.5rem;"><div class="animate-bounce" style="font-size:2rem;">⏳</div></div>' : ''}
+
+        ${inServiceHTML}
+
+        ${queueInfo && !loading ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
+            <div class="card" style="padding:0.75rem;text-align:center;"><div style="font-size:1.25rem;">👥</div><div style="font-weight:900;font-size:1.1rem;color:var(--color-text);">${queueInfo.currentSize||0}</div><div style="font-size:0.7rem;color:var(--color-text-muted);">In Queue</div></div>
+            <div class="card" style="padding:0.75rem;text-align:center;"><div style="font-size:1.25rem;">⏱️</div><div style="font-weight:900;font-size:1.1rem;color:var(--color-text);">${queueInfo.estimatedWait||0}m</div><div style="font-size:0.7rem;color:var(--color-text-muted);">Est. Wait</div></div>
+            <div class="card" style="padding:0.75rem;text-align:center;"><div style="font-size:1.25rem;">🎫</div><div style="font-weight:900;font-size:1.1rem;color:var(--color-text);">${queueInfo.maxSize||inst.queueSettings?.maxQueueSize||'—'}</div><div style="font-size:0.7rem;color:var(--color-text-muted);">Max Size</div></div>
+        </div>` : ''}
+
+        ${userPosition ? `<div class="position-card">
+            <div style="font-size:0.875rem;opacity:0.8;margin-bottom:0.25rem;">Your Position</div>
+            <div style="font-size:3rem;font-weight:900;">#${userPosition.position}</div>
+            <div style="font-size:0.875rem;opacity:0.8;">Ticket #${userPosition.ticketNumber} • ~${userPosition.estimatedWait}min wait</div>
+        </div>` : ''}
+
+        ${(() => {
+            const [iLng, iLat] = inst.location?.coordinates || [0,0];
+            if (userLocation && iLat && iLng) {
+                const dist = haversineDistance(userLocation.lat, userLocation.lng, iLat, iLng);
+                const distLabel = dist < 1 ? Math.round(dist*1000) + 'm' : dist.toFixed(1) + 'km';
+                return `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding:0.75rem 1rem;border-radius:0.75rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);">
+                    <div style="font-size:1.5rem;">📏</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700;font-size:0.9rem;color:var(--color-text);">${distLabel} away</div>
+                        <div style="font-size:0.75rem;color:var(--color-text-muted);">from your location</div>
+                    </div>
+                    <button class="btn btn-primary" style="padding:0.4rem 0.85rem;font-size:0.8rem;" data-action="directions" data-lat="${iLat}" data-lng="${iLng}">🧭 Directions</button>
+                </div>`;
+            } else if (iLat && iLng) {
+                return `<div style="margin-bottom:1rem;text-align:center;padding:0.6rem;border-radius:0.75rem;background:var(--color-border);font-size:0.8rem;color:var(--color-text-muted);cursor:pointer;" data-action="locate-user-modal">📍 Enable location to see distance & directions</div>`;
+            }
+            return '';
+        })()}
+
+        <div style="display:flex;gap:0.75rem;">
+            ${status==='open'&&currentUser&&!inQueue ? `<button class="btn btn-success" style="flex:1;" data-action="join-queue" data-id="${inst._id}">🎫 Join Queue</button>` : ''}
+            ${inQueue ? `<button class="btn btn-danger" style="flex:1;" data-action="leave-queue" data-id="${inst._id}">🚪 Leave Queue</button>` : ''}
+            ${!currentUser ? `<a href="auth/login.html" class="btn btn-primary" style="flex:1;">Login to Join →</a>` : ''}
+            ${status==='closed' ? `<div style="flex:1;text-align:center;color:var(--color-text-muted);font-size:.875rem;padding:.75rem">🔴 Queue is currently closed</div>` : ''}
+        </div>
+    `;
+}
+
+function closeModal(e) {
+    if (e && e.target !== document.getElementById('inst-modal')) return;
+    document.getElementById('inst-modal').classList.remove('visible');
+    selectedInstitution = null;
+}
+
+// ── Join / Leave queue ──
+async function joinQueue(institutionId) {
+    if (!currentUser) { Toast.error('Please login to join a queue'); return; }
+    try {
+        const res = await API.post(`/queues/${institutionId}/join`);
+        Toast.success(`🎫 Joined! Ticket #${res.entry?.ticketNumber||''}`);
+        activeQueues = [...activeQueues, institutionId];
+        Socket.subscribeToInstitution(institutionId);
+        const filtered = filterInstitutions();
+        renderList(filtered); renderMapMarkers(filtered);
+        if (selectedInstitution?._id === institutionId) openModal(institutionId);
+    } catch (err) {
+        Toast.error(err?.response?.data?.error || 'Failed to join queue');
+    }
+}
+
+async function leaveQueue(institutionId) {
+    try {
+        await API.delete(`/queues/${institutionId}/leave`);
+        Toast.success('Left queue');
+        activeQueues = activeQueues.filter(id => id !== institutionId);
+        document.getElementById('inst-modal').classList.remove('visible');
+        const filtered = filterInstitutions();
+        renderList(filtered); renderMapMarkers(filtered);
+    } catch (err) {
+        Toast.error(err?.response?.data?.error || 'Failed to leave queue');
+    }
+}
+
+// ── Search ──
+let searchTimer;
+document.getElementById('map-search').addEventListener('input', e => {
+    clearTimeout(searchTimer);
+    currentSearch = e.target.value;
+    searchTimer = setTimeout(() => { const f = filterInstitutions(); renderList(f); renderMapMarkers(f); }, 300);
+});
+
+// ── Socket updates ──
+Socket.emit('subscribeToMap');
+Socket.on('queueUpdated', ({ institutionId, queueSize, inService }) => {
+    institutions = institutions.map(inst => inst._id === institutionId ? { ...inst, currentQueueSize: queueSize } : inst);
+    const filtered = filterInstitutions();
+    renderList(filtered); renderMapMarkers(filtered);
+    // Refresh open modal
+    if (selectedInstitution?._id === institutionId) openModal(institutionId);
+});
+Socket.on('yourTurn', ({ institutionName }) => Toast.success(`🎉 It's your turn at ${institutionName}!`, 10000));
+Socket.on('turnNear', ({ institutionName }) => Toast.info(`⏳ Almost your turn at ${institutionName}!`, 6000));
+
+// ── Geolocation (silent on load) ──
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            userLocated = true;
+            placeUserMarker();
+            map.setView([userLocation.lat, userLocation.lng], 13, { animate: true });
+            fetchInstitutions();
+        },
+        () => fetchInstitutions(),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+} else { fetchInstitutions(); }
+
+// ── Init ──
+initMap();
+fetchActiveQueues();
+setView('map');
+
+// ── Handle ?institution=ID deep link ──
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const instId = params.get('institution');
+    if (instId) {
+        setTimeout(() => openModal(instId), 1500);
+    }
+})();
+
+// ── Secure Event Listeners (No Inline Handlers for CSP compliance) ──
+(function() {
+    // Top nav & controls
+    document.getElementById('view-map').addEventListener('click', () => setView('map'));
+    document.getElementById('view-list').addEventListener('click', () => setView('list'));
+    document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
+    document.getElementById('locate-me-btn').addEventListener('click', locateUser);
+    document.getElementById('clear-route-btn').addEventListener('click', clearRoute);
+
+    // Modal action delegation
+    document.getElementById('inst-modal').addEventListener('click', (e) => {
+        // If clicking the background overlay itself, close the modal
+        if (e.target === document.getElementById('inst-modal')) {
+            closeModal();
+            return;
+        }
+
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+
+        const action = actionEl.dataset.action;
+        const id = actionEl.dataset.id;
+        const lat = parseFloat(actionEl.dataset.lat);
+        const lng = parseFloat(actionEl.dataset.lng);
+
+        if (action === 'close-modal') {
+            closeModal();
+        } else if (action === 'directions') {
+            closeModal();
+            showRoute(lat, lng);
+        } else if (action === 'locate-user-modal') {
+            closeModal();
+            locateUser();
+        } else if (action === 'join-queue') {
+            joinQueue(id);
+        } else if (action === 'leave-queue') {
+            leaveQueue(id);
+        }
+    });
+})();
+</script>
+</body>
+</html>

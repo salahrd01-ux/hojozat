@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>User Management – Hojozat Admin</title>
+<link rel="stylesheet" href="css/admin.css"/>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="overlay" class="overlay"></div>
+<div class="admin-layout">
+<aside class="admin-sidebar" id="sidebar">
+  <div class="logo"><div class="logo-box">H</div><div><div style="font-weight:900;font-size:1rem">Hojozat</div><div style="font-size:.7rem;color:var(--muted)">Admin Panel</div></div></div>
+  <nav>
+    <a href="dashboard.html" class="nav-item"><span>📊</span> Dashboard</a>
+    <a href="institutions.html" class="nav-item"><span>🏥</span> Institutions</a>
+    <a href="users.html" class="nav-item active"><span>👥</span> Users</a>
+    <a href="queues.html" class="nav-item"><span>🎫</span> Queues</a>
+  </nav>
+  <div class="footer"><button class="nav-item" onclick="AdminAuth.logout()"><span>🚪</span> Logout</button></div>
+</aside>
+<main class="admin-main">
+  <div class="admin-topbar">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('overlay').classList.toggle('visible')">☰</button>
+      <h1>👥 User Management</h1>
+    </div>
+  </div>
+  <div class="admin-content">
+    <div class="search-bar">
+      <input type="text" class="input" placeholder="Search by name or email..." id="search-input"/>
+      <button class="btn btn-primary" onclick="loadUsers()">🔍 Search</button>
+    </div>
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-role="all" onclick="setRole(this)">All</button>
+      <button class="filter-tab" data-role="user" onclick="setRole(this)">👤 Users</button>
+      <button class="filter-tab" data-role="institution" onclick="setRole(this)">🏥 Institutions</button>
+    </div>
+    <div class="card"><div class="card-body table-wrap" id="table-container"></div></div>
+    <div style="display:flex;justify-content:center;gap:.5rem;margin-top:1rem" id="pagination"></div>
+  </div>
+</main>
+</div>
+<script src="js/admin.js"></script>
+<script>
+AdminAuth.require();
+let currentRole = 'all', currentPage = 1;
+document.getElementById('overlay').addEventListener('click',()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('visible');});
+document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(); });
+function setRole(btn) { document.querySelectorAll('.filter-tab').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); currentRole=btn.dataset.role; currentPage=1; loadUsers(); }
+
+async function loadUsers() {
+  const container = document.getElementById('table-container');
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Loading...</p></div>';
+  try {
+    const search = document.getElementById('search-input').value.trim();
+    const res = await AdminAPI.get('/users', { role: currentRole, search, page: currentPage, limit: 20 });
+    const users = res.users || [];
+    if (!users.length) { container.innerHTML = '<div class="empty-state"><div class="icon">👥</div><p>No users found</p></div>'; return; }
+    container.innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${users.map(u => `<tr>
+      <td style="font-weight:600">${escHtml(u.name)}</td>
+      <td>${escHtml(u.email)}</td>
+      <td><span class="badge ${u.role==='institution'?'badge-verified':'badge-pending'}">${u.role}</span></td>
+      <td>${u.isActive ? '<span class="badge badge-verified">Active</span>' : '<span class="badge badge-rejected">Suspended</span>'}</td>
+      <td>${formatDate(u.createdAt)}</td>
+      <td class="actions-cell">
+        <button class="btn ${u.isActive?'btn-warning':'btn-success'} btn-sm" onclick="toggleUser('${u._id}')">${u.isActive?'⏸️ Suspend':'✅ Activate'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}','${escHtml(u.name)}')">🗑️</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+    const pag = document.getElementById('pagination');
+    if (res.pages > 1) { let h=''; for(let p=1;p<=res.pages;p++) h+=`<button class="btn ${p===res.page?'btn-primary':'btn-ghost'} btn-sm" onclick="currentPage=${p};loadUsers()">${p}</button>`; pag.innerHTML=h; } else pag.innerHTML='';
+  } catch { container.innerHTML = '<div class="empty-state"><div class="icon">❌</div><p>Failed to load</p></div>'; }
+}
+
+async function toggleUser(id) {
+  try { const r = await AdminAPI.patch(`/users/${id}/suspend`); Toast.success(r.message); loadUsers(); } catch { Toast.error('Failed'); }
+}
+async function deleteUser(id, name) {
+  if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+  try { await AdminAPI.delete(`/users/${id}`); Toast.success('User deleted'); loadUsers(); } catch { Toast.error('Failed'); }
+}
+loadUsers();
+</script>
+</body>
+</html>

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hojozat – Real-time Queue Management</title>
+    <meta name="description" content="Skip the wait. Join smart queues remotely and track your position in real time on an interactive map." />
+    <link rel="stylesheet" href="css/styles.css" />
+    <style>
+        /* Hero */
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            padding-top: 4rem;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: rgba(255,255,255,0.1); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 9999px;
+            padding: 0.5rem 1rem; color: rgba(255,255,255,0.8);
+            font-size: 0.875rem; font-weight: 500; margin-bottom: 2rem;
+        }
+        .pulse-dot {
+            width: 8px; height: 8px; background: #4ade80;
+            border-radius: 50%; animation: pulse 1.5s infinite;
+        }
+        .hero-title {
+            font-size: clamp(2.5rem, 8vw, 5rem);
+            font-weight: 900; color: white; margin-bottom: 1.5rem;
+            line-height: 1.1;
+        }
+        .hero-subtitle {
+            font-size: 1.2rem; color: rgba(255,255,255,0.7);
+            max-width: 40rem; margin: 0 auto 3rem;
+        }
+        .hero-cta {
+            display: flex; flex-wrap: wrap; gap: 1rem;
+            justify-content: center; align-items: center;
+        }
+        .btn-hero-outline {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 1rem 2rem; border-radius: 12px; font-weight: 600;
+            font-size: 1rem; color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px);
+            transition: all 0.2s; cursor: pointer; text-decoration: none;
+        }
+        .btn-hero-outline:hover { border-color: white; background: rgba(255,255,255,0.2); }
+        .btn-large { padding: 1rem 2rem; font-size: 1rem; }
+        .stats-row {
+            margin-top: 5rem;
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 2rem; max-width: 32rem; margin-left: auto; margin-right: auto;
+        }
+        .stat-item { text-align: center; }
+        .stat-value {
+            font-size: 2.25rem; font-weight: 900;
+        }
+        .stat-label { font-size: 0.875rem; color: rgba(255,255,255,0.7); font-weight: 500; margin-top: 0.25rem; }
+        .wave-divider {
+            position: absolute; bottom: 0; left: 0; right: 0;
+        }
+        /* Features */
+        .features-section { padding: 6rem 1rem; max-width: 80rem; margin: 0 auto; }
+        .section-title { font-size: 2.25rem; font-weight: 900; margin-bottom: 1rem; color: var(--color-text); }
+        .section-subtitle { font-size: 1.1rem; color: var(--color-text-muted); }
+        .features-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem; margin-top: 3rem;
+        }
+        .feature-card {
+            padding: 1.5rem; border-radius: 1rem; cursor: default;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .feature-card:hover { transform: translateY(-8px) scale(1.02); }
+        .feature-icon {
+            width: 3rem; height: 3rem; border-radius: 0.75rem;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; margin-bottom: 1rem;
+        }
+        .icon-blue   { background: #dbeafe; }
+        .icon-purple { background: #ede9fe; }
+        .icon-green  { background: #dcfce7; }
+        .icon-orange { background: #ffedd5; }
+        .icon-pink   { background: #fce7f3; }
+        .icon-teal   { background: #ccfbf1; }
+        /* How it works */
+        .how-section { padding: 6rem 1rem; background: var(--color-card); }
+        .how-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 2rem; max-width: 56rem; margin: 3rem auto 0;
+        }
+        .how-item { text-align: center; position: relative; }
+        .how-step-num {
+            font-size: 5rem; font-weight: 900; opacity: 0.12;
+            position: absolute; top: -1rem; left: -0.5rem; line-height: 1;
+        }
+        .how-icon { font-size: 3rem; margin-bottom: 1rem; position: relative; }
+        .how-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--color-text); }
+        .how-desc  { color: var(--color-text-muted); }
+        /* CTA */
+        .cta-section { padding: 6rem 1rem; text-align: center; position: relative; overflow: hidden; }
+        /* Floating dots */
+        #dots-container { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+        /* Navbar */
+        .navbar-inner {
+            max-width: 80rem; margin: 0 auto; padding: 0 1rem;
+            height: 4rem; display: flex; align-items: center; justify-content: space-between;
+        }
+        .logo-link { display: flex; align-items: center; gap: 0.5rem; text-decoration: none; }
+        .logo-box {
+            width: 2.25rem; height: 2.25rem;
+            background: linear-gradient(135deg, #3b82f6, #7c3aed);
+            border-radius: 0.75rem; display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 900; font-size: 1.1rem;
+            box-shadow: 0 0 20px rgba(59,130,246,0.4);
+        }
+        .nav-actions { display: flex; align-items: center; gap: 0.75rem; }
+        /* Footer */
+        footer {
+            padding: 3rem 1rem;
+            border-top: 1px solid var(--color-border);
+            background: var(--color-card);
+        }
+        .footer-inner {
+            max-width: 80rem; margin: 0 auto;
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 1rem;
+        }
+        .footer-links { display: flex; gap: 1rem; }
+        .footer-links a { color: var(--color-text-muted); font-size: 0.875rem; transition: color 0.2s; }
+        .footer-links a:hover { color: #3b82f6; }
+    </style>
+</head>
+<body>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Navbar -->
+<nav class="navbar glass border-b" style="border-color: rgba(255,255,255,0.2);">
+    <div class="navbar-inner">
+        <a href="index.html" class="logo-link">
+            <div class="logo-box">H</div>
+            <span class="font-black text-lg gradient-text" style="display:none;" id="app-name-nav">Hojozat</span>
+        </a>
+        <div class="nav-actions">
+            <button data-toggle-theme data-theme-icon aria-label="Toggle theme"
+                class="btn btn-ghost" style="padding: 0.5rem; font-size: 1.2rem;">🌙</button>
+            <div id="nav-auth">
+                <a href="auth/login.html" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Login</a>
+                <a href="auth/register.html" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Register</a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero Section -->
+<section class="hero-section hero-bg">
+    <div id="dots-container"></div>
+
+    <div style="position:relative; z-index:10; max-width: 56rem; margin: 0 auto; padding: 5rem 1rem 2rem;">
+        <div class="hero-badge">
+            <span class="pulse-dot"></span>
+            Real-time Queue Management System
+        </div>
+
+        <h1 class="hero-title">
+            Skip the Wait,<br>
+            <span class="gradient-text">Join Smart Queues</span>
+        </h1>
+
+        <p class="hero-subtitle">
+            Find nearby institutions on an interactive map, join their queues remotely,
+            and receive real-time updates about your position.
+        </p>
+
+        <div class="hero-cta">
+            <a href="map.html" class="btn btn-primary btn-large" id="hero-cta" style="box-shadow: 0 8px 30px rgba(59,130,246,0.5);">
+                🗺️ Explore the Map →
+            </a>
+            <a href="auth/login.html" class="btn-hero-outline" id="hero-login">
+                Login →
+            </a>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-item">
+                <div class="stat-value gradient-text">2,847</div>
+                <div class="stat-label">👥 Users</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value gradient-text">142</div>
+                <div class="stat-label">🏥 Institutions</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value gradient-text">18K+</div>
+                <div class="stat-label">✅ Served Today</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wave Divider -->
+    <div class="wave-divider">
+        <svg viewBox="0 0 1440 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0,80 C360,20 1080,20 1440,80 L1440,80 L0,80 Z" fill="var(--color-bg)" />
+        </svg>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="features-section">
+    <div class="text-center mb-12">
+        <h2 class="section-title">Everything You Need</h2>
+        <p class="section-subtitle">A complete platform for both users and institutions</p>
+    </div>
+
+    <div class="features-grid">
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-blue">🗺️</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Interactive Map</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">See all institutions on a live map with real-time status markers.</p>
+        </div>
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-purple">⏱️</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Smart Waiting</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">AI-powered wait time prediction. Know exactly when your turn is.</p>
+        </div>
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-green">📱</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Remote Join</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">Join queues from home, arrive just in time. No more standing in line.</p>
+        </div>
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-orange">🔔</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Live Notifications</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">Get notified when your turn is near via app, email, or SMS.</p>
+        </div>
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-pink">📊</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Analytics</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">Institutions get real-time stats, peak hour analysis, and insights.</p>
+        </div>
+        <div class="glass-card feature-card">
+            <div class="feature-icon icon-teal">🔐</div>
+            <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; color:var(--color-text);">Secure &amp; Fast</h3>
+            <p style="font-size:0.9rem; color:var(--color-text-muted);">Enterprise-grade security with JWT auth and encrypted data.</p>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-section">
+    <div style="max-width:56rem; margin: 0 auto; padding: 0 1rem;">
+        <h2 class="section-title text-center">How It Works</h2>
+        <div class="how-grid">
+            <div class="how-item">
+                <div class="how-step-num gradient-text">01</div>
+                <div class="how-icon">🔍</div>
+                <h3 class="how-title">Find &amp; Browse</h3>
+                <p class="how-desc">Search for institutions near you on our interactive map. Filter by category, distance, or queue size.</p>
+            </div>
+            <div class="how-item">
+                <div class="how-step-num gradient-text">02</div>
+                <div class="how-icon">🎫</div>
+                <h3 class="how-title">Join Remotely</h3>
+                <p class="how-desc">Join the queue from anywhere. Get a digital ticket with your position and estimated waiting time.</p>
+            </div>
+            <div class="how-item">
+                <div class="how-step-num gradient-text">03</div>
+                <div class="how-icon">🔔</div>
+                <h3 class="how-title">Get Notified</h3>
+                <p class="how-desc">Relax while we track your position. Receive real-time push notifications when your turn is near.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section hero-bg">
+    <div style="position:relative; z-index:10; max-width:36rem; margin: 0 auto;">
+        <h2 style="font-size:2.25rem; font-weight:900; color:white; margin-bottom:1.5rem;">Ready to skip the wait?</h2>
+        <p style="color:rgba(255,255,255,0.7); font-size:1.1rem; margin-bottom:2rem;">
+            Join thousands of users who save hours every week with Hojozat.
+        </p>
+        <div class="hero-cta">
+            <a href="auth/register.html" class="btn btn-primary btn-large">Get Started Free →</a>
+            <a href="map.html" class="btn-hero-outline">🗺️ View Live Map</a>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <div class="footer-inner">
+        <div class="flex items-center gap-2">
+            <div class="logo-box" style="width:2rem;height:2rem;font-size:0.9rem;">H</div>
+            <span class="font-bold gradient-text">Hojozat</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--color-text-muted);">
+            © 2026 Hojozat. Built for the modern world.
+        </p>
+        <div class="footer-links">
+            <a href="map.html">Map</a>
+            <a href="auth/login.html">Login</a>
+            <a href="auth/register.html">Register</a>
+        </div>
+    </div>
+</footer>
+
+<script src="js/app.js"></script>
+<script>
+    // ── Floating dots ──
+    const dotsContainer = document.getElementById('dots-container');
+    for (let i = 0; i < 15; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        const size = Math.random() * 6 + 2;
+        dot.style.cssText = `
+            width:${size}px; height:${size}px;
+            background:rgba(${Math.random()>0.5?'59,130,246':'139,92,246'},0.6);
+            left:${Math.random()*100}%;
+            animation-duration:${Math.random()*10+8}s;
+            animation-delay:${Math.random()*5}s;
+        `;
+        dotsContainer.appendChild(dot);
+    }
+
+    // ── Nav ──
+    (function updateNav() {
+        const user = Auth.getUser();
+        const navAuth = document.getElementById('nav-auth');
+        const heroLogin = document.getElementById('hero-login');
+        const heroCta = document.getElementById('hero-cta');
+
+        if (user) {
+            let href = 'dashboard.html';
+            if (user.role === 'institution') href = 'institution/dashboard.html';
+            navAuth.innerHTML = `<a href="${href}" class="btn btn-primary" style="padding:0.5rem 1rem;font-size:0.875rem;">📊 Dashboard →</a>`;
+            heroCta.href = 'map.html';
+            heroLogin.textContent = '📊 Go to Dashboard';
+            heroLogin.href = href;
+        }
+
+        const appNameNav = document.getElementById('app-name-nav');
+        if (window.innerWidth > 640) appNameNav.style.display = '';
+    })();
+</script>
+</body>
+</html>

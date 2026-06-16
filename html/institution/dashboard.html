@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Institution Dashboard – Hojozat</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="../css/styles.css"/>
+<style>
+.app-layout{display:flex;min-height:100vh;background:var(--color-bg)}
+.sidebar{width:15rem;flex-shrink:0;display:flex;flex-direction:column;background:var(--color-card);border-right:1px solid var(--color-border);position:fixed;top:0;bottom:0;left:0;z-index:50;transform:translateX(-100%);transition:transform .3s ease}
+.sidebar.open{transform:translateX(0)}
+.sidebar-header{padding:1rem;border-bottom:1px solid var(--color-border)}
+.logo-link{display:flex;align-items:center;gap:.5rem;text-decoration:none;margin-bottom:.75rem}
+.logo-box{width:2rem;height:2rem;background:linear-gradient(135deg,#3b82f6,#7c3aed);border-radius:.5rem;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900}
+.sidebar-nav{flex:1;padding:.75rem;display:flex;flex-direction:column;gap:.25rem}
+.sidebar-footer{padding:.75rem;border-top:1px solid var(--color-border);display:flex;flex-direction:column;gap:.25rem}
+.main-content{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.25rem;border-bottom:1px solid var(--color-border);background:var(--color-card)}
+.page-content{padding:1.25rem;flex:1}
+.tab-pane{display:none}
+.tab-pane.active{display:block;animation:fadeIn .3s ease}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.stat-box{padding:1rem;border-radius:.875rem;background:var(--color-card);border:1px solid var(--color-border);text-align:center}
+.queue-row{display:flex;align-items:center;gap:.75rem;padding:.875rem;border-radius:.875rem;background:var(--color-card);border:1px solid var(--color-border);margin-bottom:.5rem;transition:transform .15s}
+.queue-row:hover{transform:translateX(2px)}
+.ticket-badge{width:2.5rem;height:2.5rem;border-radius:.625rem;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;font-size:.8rem;flex-shrink:0}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40}
+.overlay.visible{display:block}
+.modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:60;width:min(28rem,95vw);background:var(--color-card);border-radius:1rem;border:1px solid var(--color-border);padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal.open{display:block;animation:fadeIn .2s ease}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem}
+.close-btn{background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--color-text-muted);padding:.25rem}
+.in-service-banner{background:linear-gradient(135deg,#22c55e,#15803d);color:#fff;border-radius:.875rem;padding:1rem 1.25rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+@media(min-width:1024px){.sidebar{position:static;transform:none}.overlay{display:none!important}}
+@media(max-width:1023px){.menu-btn{display:block!important}}
+.menu-btn{display:none;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text)}
+#profile-map{height:280px;border-radius:.875rem;border:1px solid var(--color-border);z-index:0}
+.profile-form label{display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem}
+.profile-form .field{margin-bottom:.875rem}
+.profile-form select{width:100%;padding:.75rem 1rem;border-radius:12px;border:1.5px solid var(--color-border);background:var(--color-card);color:var(--color-text);font-size:.9rem}
+.profile-form select:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(59,130,246,.15);outline:none}
+.profile-form textarea{width:100%;padding:.75rem 1rem;border-radius:12px;border:1.5px solid var(--color-border);background:var(--color-card);color:var(--color-text);font-size:.9rem;resize:vertical;min-height:80px}
+.profile-form textarea:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(59,130,246,.15);outline:none}
+.wh-grid{display:grid;grid-template-columns:1fr;gap:.5rem}
+.wh-row{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:.75rem;background:var(--color-bg);border:1px solid var(--color-border)}
+.wh-row label{margin:0;min-width:5rem;font-size:.8rem}
+.wh-row input[type="time"]{padding:.3rem .5rem;border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);color:var(--color-text);font-size:.8rem}
+.wh-row input[type="checkbox"]{width:1rem;height:1rem;accent-color:var(--color-primary)}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="overlay" class="overlay"></div>
+
+<!-- Add/Edit Patient Modal -->
+<div id="patient-modal" class="modal">
+  <div class="modal-header">
+    <h3 style="font-weight:700;color:var(--color-text)" id="modal-title">Add Patient</h3>
+    <button class="close-btn" onclick="closeModal()">✕</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:.875rem">
+    <div class="form-row">
+      <div>
+        <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">First Name *</label>
+        <input type="text" id="m-first" class="input" placeholder="Ahmed"/>
+      </div>
+      <div>
+        <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">Last Name</label>
+        <input type="text" id="m-last" class="input" placeholder="Benali"/>
+      </div>
+    </div>
+    <div>
+      <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">Phone</label>
+      <input type="tel" id="m-phone" class="input" placeholder="+213 555 ..."/>
+    </div>
+    <div>
+      <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">Notes (optional)</label>
+      <input type="text" id="m-notes" class="input" placeholder="e.g. Follow-up visit"/>
+    </div>
+    <button class="btn btn-primary w-full" onclick="submitPatient()">Save Patient</button>
+  </div>
+</div>
+
+<div class="app-layout">
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <a href="../index.html" class="logo-link">
+      <div class="logo-box">H</div>
+      <span class="font-black gradient-text" style="font-size:.875rem">Hojozat</span>
+    </a>
+    <div style="padding:.625rem;border-radius:.75rem;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="font-size:1.25rem">🏥</span>
+        <span style="font-weight:700;font-size:.8rem;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="sidebar-name">My Institution</span>
+      </div>
+      <span class="badge" id="sidebar-status" style="margin-top:.375rem;font-size:.7rem">🔴 Closed</span>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="sidebar-item active" data-tab="queue" id="nav-queue"><span>🎫</span><span>Queue</span></button>
+    <button class="sidebar-item" data-tab="stats" id="nav-stats"><span>📊</span><span>Statistics</span></button>
+    <button class="sidebar-item" data-tab="profile" id="nav-profile"><span>🏥</span><span>Profile</span></button>
+    <button class="sidebar-item" data-tab="settings" id="nav-settings"><span>⚙️</span><span>Settings</span></button>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="../map.html" class="sidebar-item"><span>🗺️</span><span>View Map</span></a>
+    <button class="sidebar-item" data-toggle-theme><span data-theme-icon>🌙</span><span id="theme-label">Dark Mode</span></button>
+    <button class="sidebar-item" id="logout-btn" style="color:#ef4444"><span>🚪</span><span>Logout</span></button>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main-content">
+  <div class="topbar glass">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <h1 style="font-size:1.1rem;font-weight:900;color:var(--color-text)" id="page-title">🎫 Queue</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <span style="font-size:.875rem;color:var(--color-text-muted)" id="queue-count-label">👥 0 in queue</span>
+      <button id="toggle-btn" class="btn btn-success" style="padding:.4rem .875rem;font-size:.8rem" onclick="handleToggle()">🟢 Open Queue</button>
+    </div>
+  </div>
+
+  <div class="page-content">
+    <!-- Queue Tab -->
+    <div class="tab-pane active" id="tab-queue">
+
+      <!-- In-Service Banner -->
+      <div id="in-service-banner" class="in-service-banner" style="display:none">
+        <div>
+          <div style="font-size:.75rem;opacity:.8">Currently In Service</div>
+          <div style="font-weight:900;font-size:1.1rem" id="in-service-name">—</div>
+          <div style="font-size:.8rem;opacity:.8" id="in-service-ticket">Ticket #—</div>
+        </div>
+        <button class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:.5rem 1rem;font-size:.875rem" onclick="handleComplete()">
+          ✅ Mark Complete
+        </button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-grid" id="queue-stats"></div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;flex-wrap:wrap;gap:.625rem;margin-bottom:1rem">
+        <button class="btn btn-primary" id="call-btn" onclick="handleCallNext()">📢 Call Next Patient</button>
+        <button class="btn btn-secondary" onclick="openModal()">➕ Add Patient</button>
+        <button class="btn btn-danger" onclick="handleClear()" style="margin-left:auto">🗑️ Clear Queue</button>
+      </div>
+
+      <!-- Queue list -->
+      <h2 style="font-size:1rem;font-weight:700;color:var(--color-text);margin-bottom:.75rem" id="queue-title">Waiting Patients (0)</h2>
+      <div id="queue-entries"></div>
+    </div>
+
+    <!-- Stats Tab -->
+    <div class="tab-pane" id="tab-stats">
+      <div class="stats-grid" id="stats-big"></div>
+      <div class="card" style="padding:1.25rem">
+        <h3 style="font-weight:700;margin-bottom:1rem;color:var(--color-text)">About This Institution</h3>
+        <div id="inst-details" style="display:flex;flex-direction:column;gap:.5rem;font-size:.875rem;color:var(--color-text-muted)"></div>
+      </div>
+    </div>
+
+    <!-- Profile Tab -->
+    <div class="tab-pane" id="tab-profile">
+      <div style="max-width:40rem" class="profile-form">
+        <div class="card" style="padding:1.25rem;margin-bottom:1rem">
+          <h2 style="font-size:1.1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">🏥 Institution Profile</h2>
+          <div class="field">
+            <label>Institution Name *</label>
+            <input type="text" id="p-name" class="input" placeholder="e.g. Clinique El Shifa" maxlength="200"/>
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea id="p-desc" placeholder="Describe your institution..." maxlength="1000"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Category *</label>
+              <select id="p-category">
+                <option value="clinic">🏥 Clinic</option>
+                <option value="hospital">🏨 Hospital</option>
+                <option value="pharmacy">💊 Pharmacy</option>
+                <option value="laboratory">🔬 Laboratory</option>
+                <option value="dental">🦷 Dental</option>
+                <option value="specialist">👨‍⚕️ Specialist</option>
+                <option value="other">🏥 Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Phone Number</label>
+              <input type="tel" id="p-phone" class="input" placeholder="+213 555 123 456"/>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Email</label>
+              <input type="email" id="p-email" class="input" placeholder="contact@clinic.com"/>
+            </div>
+            <div class="field">
+              <label>Website</label>
+              <input type="url" id="p-website" class="input" placeholder="https://clinic.com"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:1.25rem;margin-bottom:1rem">
+          <h2 style="font-size:1.1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">📍 Location</h2>
+          <p style="font-size:.8rem;color:var(--color-text-muted);margin-bottom:.75rem">Drag the marker to set your exact location. Click the map to move the marker.</p>
+          <div id="profile-map"></div>
+          <div class="form-row" style="margin-top:.75rem">
+            <div class="field">
+              <label>Address</label>
+              <input type="text" id="p-address" class="input" placeholder="Street address"/>
+            </div>
+            <div class="field">
+              <label>City</label>
+              <input type="text" id="p-city" class="input" placeholder="City"/>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Latitude</label>
+              <input type="number" id="p-lat" class="input" step="any" placeholder="36.7538" readonly/>
+            </div>
+            <div class="field">
+              <label>Longitude</label>
+              <input type="number" id="p-lng" class="input" step="any" placeholder="3.0588" readonly/>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:1.25rem;margin-bottom:1rem">
+          <h2 style="font-size:1.1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">🕐 Working Hours</h2>
+          <div class="wh-grid" id="wh-grid"></div>
+        </div>
+
+        <div class="card" style="padding:1.25rem;margin-bottom:1rem">
+          <h2 style="font-size:1.1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">📄 Verification Document</h2>
+          <div id="verification-status" style="margin-bottom:.75rem"></div>
+          <p style="font-size:.8rem;color:var(--color-text-muted);margin-bottom:.75rem">Upload a medical license, clinic proof, or official document. Accepted: PDF, JPG, PNG (max 10MB).</p>
+          <input type="file" id="p-document" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none"/>
+          <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('p-document').click()" id="upload-doc-btn">📤 Choose & Upload Document</button>
+          <div id="doc-preview" style="margin-top:.75rem"></div>
+        </div>
+
+        <button class="btn btn-primary w-full" style="padding:.875rem;font-size:1rem;margin-bottom:1rem" onclick="saveProfile()" id="save-profile-btn">💾 Save Profile</button>
+        <p style="font-size:.75rem;color:var(--color-text-muted);text-align:center;margin-bottom:1rem">After saving, your institution will be reviewed by an admin before appearing publicly.</p>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-pane" id="tab-settings">
+      <div style="max-width:30rem">
+        <div class="card" style="padding:1.25rem;margin-bottom:1rem">
+          <h2 style="font-size:1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">Queue Settings</h2>
+          <div style="margin-bottom:.875rem">
+            <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">Max Queue Size</label>
+            <input type="number" id="s-max" class="input" min="1" max="500" value="50"/>
+          </div>
+          <div style="margin-bottom:.875rem">
+            <label style="display:block;font-size:.8rem;font-weight:600;color:var(--color-text);margin-bottom:.3rem">Avg Service Time (minutes/patient)</label>
+            <input type="number" id="s-time" class="input" min="1" max="120" value="10"/>
+          </div>
+          <button class="btn btn-primary w-full" onclick="saveSettings()">💾 Save Settings</button>
+        </div>
+        <div class="card" style="padding:1.25rem">
+          <h2 style="font-size:1rem;font-weight:700;color:var(--color-text);margin-bottom:1rem">Institution Info</h2>
+          <div id="settings-details" style="display:flex;flex-direction:column;gap:.5rem;font-size:.875rem;color:var(--color-text-muted)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="../js/app.js"></script>
+<script>
+// ── Auth guard ──
+const user = Auth.getUser();
+if (!user) { window.location.href = '../auth/login.html'; }
+if (user && user.role === 'user') { window.location.href = '../dashboard.html'; }
+
+// ── State ──
+let institution = null, queue = null, editingEntryId = null;
+
+// ── Sidebar ──
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('overlay');
+document.getElementById('menu-btn').onclick = () => { sidebar.classList.add('open'); overlay.classList.add('visible'); };
+overlay.onclick = closeSidebar;
+function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('visible'); }
+
+// ── Tabs ──
+const TAB_TITLES = { queue:'🎫 Queue', stats:'📊 Statistics', settings:'⚙️ Settings', profile:'🏥 Profile' };
+function switchTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item[data-tab]').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  document.getElementById('nav-'+id)?.classList.add('active');
+  document.getElementById('page-title').textContent = TAB_TITLES[id] || id;
+  closeSidebar();
+}
+document.querySelectorAll('.sidebar-item[data-tab]').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+// ── Theme ──
+function updateThemeLabel() { document.getElementById('theme-label').textContent = Theme.isDark() ? 'Light Mode' : 'Dark Mode'; }
+updateThemeLabel();
+document.addEventListener('click', e => { if (e.target.closest('[data-toggle-theme]')) setTimeout(updateThemeLabel, 50); });
+
+// ── Logout ──
+document.getElementById('logout-btn').onclick = () => Auth.logout();
+
+// ── Modal ──
+function openModal(entryId = null) {
+  editingEntryId = entryId;
+  document.getElementById('modal-title').textContent = entryId ? 'Edit Patient' : 'Add Patient';
+  if (!entryId) {
+    document.getElementById('m-first').value = '';
+    document.getElementById('m-last').value  = '';
+    document.getElementById('m-phone').value = '';
+    document.getElementById('m-notes').value = '';
+  } else {
+    const active = queue?.entries?.filter(e => ['waiting','in_service'].includes(e.status)) || [];
+    const entry  = active.find(e => e.id === entryId);
+    if (entry) {
+      document.getElementById('m-first').value = entry.firstName || '';
+      document.getElementById('m-last').value  = entry.lastName  || '';
+      document.getElementById('m-phone').value = entry.phone     || '';
+      document.getElementById('m-notes').value = entry.notes     || '';
+    }
+  }
+  document.getElementById('patient-modal').classList.add('open');
+  overlay.classList.add('visible');
+}
+function closeModal() {
+  document.getElementById('patient-modal').classList.remove('open');
+  if (!sidebar.classList.contains('open')) overlay.classList.remove('visible');
+  editingEntryId = null;
+}
+
+async function submitPatient() {
+  const firstName = document.getElementById('m-first').value.trim();
+  const lastName  = document.getElementById('m-last').value.trim();
+  const phone     = document.getElementById('m-phone').value.trim();
+  const notes     = document.getElementById('m-notes').value.trim();
+
+  if (!firstName) { Toast.error('First name is required'); return; }
+  if (!institution) return;
+
+  try {
+    if (editingEntryId) {
+      await API.patch(`/queues/${institution._id}/entry/${editingEntryId}`, { firstName, lastName, phone, notes });
+      Toast.success('Patient updated');
+    } else {
+      await API.post(`/queues/${institution._id}/manual`, { firstName, lastName, phone, notes });
+      Toast.success('Patient added to queue');
+    }
+    closeModal();
+    await loadQueue();
+  } catch(err) {
+    Toast.error(err?.response?.data?.error || 'Failed to save patient');
+  }
+}
+
+// ── Load data ──
+async function loadInstitution() {
+  try {
+    const res = await API.get('/institutions/my');
+    institution = res.institution;
+    renderInstitutionUI();
+    await loadQueue();
+    Socket.subscribeToInstitution(institution._id);
+  } catch(err) {
+    if (err?.response?.status === 404) {
+      // No institution profile yet — show setup screen
+      showSetupScreen();
+    } else {
+      Toast.error('Could not load institution data');
+    }
+  }
+}
+
+function showSetupScreen() {
+  // Hide topbar toggle, show setup
+  document.getElementById('toggle-btn').style.display = 'none';
+  document.getElementById('queue-count-label').textContent = '';
+  document.getElementById('tab-queue').innerHTML = `
+    <div class="card" style="padding:2rem;text-align:center;margin-bottom:1.25rem">
+      <div style="font-size:3rem;margin-bottom:.75rem">🏥</div>
+      <h2 style="font-weight:900;color:var(--color-text);margin-bottom:.5rem">Welcome to Hojozat!</h2>
+      <p style="color:var(--color-text-muted);margin-bottom:1.25rem">Your institution profile isn't set up yet.<br>Go to the <strong>Profile</strong> tab to create it.</p>
+      <button class="btn btn-primary" onclick="switchTab('profile')">🏥 Set Up Profile →</button>
+    </div>`;
+  // Initialize profile form for new institution
+  renderWorkingHours();
+  switchTab('profile');
+}
+
+async function loadQueue() {
+  if (!institution) return;
+  try {
+    const res = await API.get(`/queues/${institution._id}`);
+    queue = res;
+    renderQueue();
+  } catch { renderQueue(); }
+}
+
+// ── Render ──
+function renderInstitutionUI() {
+  if (!institution) return;
+  const isOpen = institution.queueSettings?.isQueueOpen;
+  document.getElementById('sidebar-name').textContent = institution.name || 'My Institution';
+  const sb = document.getElementById('sidebar-status');
+  sb.textContent = isOpen ? '🟢 Queue Open' : '🔴 Queue Closed';
+  sb.className   = 'badge ' + (isOpen ? 'status-open' : 'status-closed');
+
+  const tb = document.getElementById('toggle-btn');
+  tb.textContent = isOpen ? '🔴 Close Queue' : '🟢 Open Queue';
+  tb.className   = 'btn ' + (isOpen ? 'btn-danger' : 'btn-success');
+  tb.style.cssText = 'padding:.4rem .875rem;font-size:.8rem';
+
+  // Settings tab
+  document.getElementById('s-max').value  = institution.queueSettings?.maxQueueSize   || 50;
+  document.getElementById('s-time').value = institution.queueSettings?.avgServiceTime || 10;
+
+  const det = `
+    <div>🏥 <strong>Category:</strong> ${institution.category || '—'}</div>
+    <div>📍 <strong>Address:</strong> ${institution.location?.address || '—'}</div>
+    <div>📞 <strong>Phone:</strong> ${institution.contact?.phone || '—'}</div>
+    <div>📧 <strong>Email:</strong> ${institution.contact?.email || '—'}</div>
+    <div>⭐ <strong>Rating:</strong> ${institution.averageRating?.toFixed(1) || 'N/A'} (${institution.totalReviews || 0} reviews)</div>`;
+  document.getElementById('settings-details').innerHTML = det;
+  document.getElementById('inst-details').innerHTML = det;
+
+  // Show toggle button (may have been hidden by setup screen)
+  document.getElementById('toggle-btn').style.display = '';
+
+  // Populate profile form if the profile tab exists
+  populateProfileForm();
+}
+
+function renderQueue() {
+  if (!institution) return;
+  const entries  = queue?.entries || [];
+  const active   = entries.filter(e => ['waiting','in_service'].includes(e.status));
+  const waiting  = active.filter(e => e.status === 'waiting');
+  const inSvc    = active.find(e => e.status === 'in_service');
+  const avgTime  = institution.queueSettings?.avgServiceTime || 10;
+  const served   = queue?.totalServedToday || 0;
+
+  // topbar
+  document.getElementById('queue-count-label').textContent = `👥 ${active.length} in queue`;
+
+  // in-service banner
+  const banner = document.getElementById('in-service-banner');
+  if (inSvc) {
+    banner.style.display = '';
+    document.getElementById('in-service-name').textContent   = inSvc.displayName || '—';
+    document.getElementById('in-service-ticket').textContent = `Ticket #${inSvc.ticketNumber}`;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  // call-next button
+  document.getElementById('call-btn').disabled = waiting.length === 0 || !!inSvc;
+
+  // stats
+  document.getElementById('queue-stats').innerHTML = [
+    { icon:'👥', val: active.length,     label:'In Queue',     color:'#3b82f6' },
+    { icon:'✅', val: served,            label:'Served Today', color:'#22c55e' },
+    { icon:'⏱️', val: `${active.length*avgTime}m`, label:'Total Wait', color:'#f59e0b' },
+    { icon:'🎫', val: queue?.nextTicketNumber||1,  label:'Next Ticket', color:'#8b5cf6' },
+  ].map(s => `<div class="stat-box"><div style="font-size:1.4rem;margin-bottom:.25rem">${s.icon}</div><div style="font-size:1.3rem;font-weight:900;color:${s.color}">${s.val}</div><div style="font-size:.7rem;color:var(--color-text-muted)">${s.label}</div></div>`).join('');
+
+  // stats tab
+  document.getElementById('stats-big').innerHTML = [
+    { icon:'✅', val: institution.statistics?.totalServedToday||0,   label:'Served Today' },
+    { icon:'📈', val: institution.statistics?.totalServedAllTime||0, label:'Total Served' },
+    { icon:'⏱️', val: `${institution.statistics?.avgWaitingTime||0}m`, label:'Avg Wait' },
+    { icon:'⭐', val: institution.averageRating?.toFixed(1)||'N/A',  label:'Rating' },
+  ].map(s => `<div class="stat-box"><div style="font-size:1.4rem;margin-bottom:.25rem">${s.icon}</div><div style="font-size:1.3rem;font-weight:900" class="gradient-text">${s.val}</div><div style="font-size:.7rem;color:var(--color-text-muted)">${s.label}</div></div>`).join('');
+
+  // queue title
+  document.getElementById('queue-title').textContent = `Waiting Patients (${waiting.length})`;
+
+  // queue list — waiting only
+  const container = document.getElementById('queue-entries');
+  if (waiting.length === 0) {
+    container.innerHTML = `<div class="card" style="padding:2.5rem;text-align:center">
+      <div style="font-size:2.5rem;margin-bottom:.75rem">🎉</div>
+      <p style="font-weight:700;color:var(--color-text)">Queue is empty!</p>
+      <p style="font-size:.875rem;color:var(--color-text-muted);margin-top:.25rem">${institution.queueSettings?.isQueueOpen?'Waiting for patients to join...':'Open the queue to accept patients'}</p>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = waiting.map((e, i) => {
+    const colors = ['#22c55e','#eab308','#3b82f6','#8b5cf6','#f97316'];
+    const color  = colors[i % colors.length];
+    return `<div class="queue-row">
+      <div class="ticket-badge" style="background:${color}">#${e.position}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.9rem;color:var(--color-text)">${e.displayName}</div>
+        <div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.1rem">
+          Ticket #${e.ticketNumber} • ${e.joinMethod === 'manual' ? '🚶 Walk-in' : '📱 Remote'} • ~${(e.position-1)*avgTime}m wait
+          ${e.phone ? `• 📞 ${e.phone}` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:.375rem;flex-shrink:0">
+        <button class="btn btn-secondary" style="padding:.3rem .6rem;font-size:.75rem" onclick="openModal('${e.id}')">✏️</button>
+        <button class="btn btn-danger"    style="padding:.3rem .6rem;font-size:.75rem" onclick="handleRemove('${e.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Actions ──
+async function handleToggle() {
+  if (!institution) return;
+  try {
+    const res = await API.patch(`/institutions/${institution._id}/toggle-queue`);
+    institution.queueSettings.isQueueOpen = res.isOpen;
+    Toast.success(res.message || 'Queue status updated');
+    renderInstitutionUI();
+  } catch { Toast.error('Failed to toggle queue'); }
+}
+
+async function handleCallNext() {
+  if (!institution) return;
+  const btn = document.getElementById('call-btn');
+  btn.disabled = true;
+  try {
+    const res = await API.patch(`/queues/${institution._id}/call-next`);
+    Toast.success(`📢 Called: ${res.patient} (Ticket #${res.ticketNumber})`);
+    await loadQueue();
+  } catch(err) {
+    Toast.error(err?.response?.data?.error || 'Failed to call next');
+    btn.disabled = false;
+  }
+}
+
+async function handleComplete() {
+  if (!institution) return;
+  try {
+    await API.patch(`/queues/${institution._id}/complete`);
+    Toast.success('✅ Patient marked as completed');
+    await loadQueue();
+  } catch(err) {
+    Toast.error(err?.response?.data?.error || 'Failed to complete');
+  }
+}
+
+async function handleRemove(entryId) {
+  if (!institution || !confirm('Remove this patient from the queue?')) return;
+  try {
+    await API.delete(`/queues/${institution._id}/remove/${entryId}`);
+    Toast.success('Patient removed');
+    await loadQueue();
+  } catch { Toast.error('Failed to remove patient'); }
+}
+
+async function handleClear() {
+  if (!institution || !confirm('Clear the entire queue? This cannot be undone.')) return;
+  try {
+    await API.delete(`/queues/${institution._id}/clear`);
+    Toast.success('Queue cleared');
+    await loadQueue();
+  } catch { Toast.error('Failed to clear queue'); }
+}
+
+async function saveSettings() {
+  if (!institution) return;
+  const btn = document.querySelector('[onclick="saveSettings()"]');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const res = await API.put(`/institutions/${institution._id}`, {
+      queueSettings: {
+        ...institution.queueSettings,
+        maxQueueSize:   parseInt(document.getElementById('s-max').value),
+        avgServiceTime: parseInt(document.getElementById('s-time').value),
+      }
+    });
+    institution = res.institution || institution;
+    Toast.success('Settings saved!');
+    renderInstitutionUI();
+  } catch { Toast.error('Failed to save settings'); }
+  finally { btn.disabled = false; btn.textContent = '💾 Save Settings'; }
+}
+
+// ── Socket real-time ──
+Socket.on('queueUpdated', ({ entries, queueSize, inService }) => {
+  if (!queue) queue = {};
+  queue.entries   = entries || [];
+  queue.size      = queueSize;
+  queue.inService = inService;
+  renderQueue();
+});
+
+// ── Profile Map ──
+let profileMap = null, profileMarker = null;
+let profileLat = 36.7538, profileLng = 3.0588;
+
+function initProfileMap() {
+  if (profileMap) { profileMap.invalidateSize(); return; }
+  const mapEl = document.getElementById('profile-map');
+  if (!mapEl || typeof L === 'undefined') return;
+  profileMap = L.map('profile-map').setView([profileLat, profileLng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }).addTo(profileMap);
+  profileMarker = L.marker([profileLat, profileLng], { draggable: true }).addTo(profileMap);
+  profileMarker.on('dragend', function() {
+    const p = profileMarker.getLatLng();
+    profileLat = p.lat; profileLng = p.lng;
+    document.getElementById('p-lat').value = p.lat.toFixed(6);
+    document.getElementById('p-lng').value = p.lng.toFixed(6);
+  });
+  profileMap.on('click', function(e) {
+    profileLat = e.latlng.lat; profileLng = e.latlng.lng;
+    profileMarker.setLatLng(e.latlng);
+    document.getElementById('p-lat').value = e.latlng.lat.toFixed(6);
+    document.getElementById('p-lng').value = e.latlng.lng.toFixed(6);
+  });
+  document.getElementById('p-lat').value = profileLat.toFixed(6);
+  document.getElementById('p-lng').value = profileLng.toFixed(6);
+}
+
+// ── Working Hours ──
+const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+function renderWorkingHours() {
+  const grid = document.getElementById('wh-grid');
+  const wh = institution?.workingHours || {};
+  grid.innerHTML = DAYS.map(day => {
+    const d = wh[day] || { open:'08:00', close:'17:00', isOpen: !['saturday','sunday'].includes(day) };
+    return `<div class="wh-row">
+      <input type="checkbox" id="wh-${day}-open" ${d.isOpen?'checked':''}/>
+      <label for="wh-${day}-open">${day.charAt(0).toUpperCase()+day.slice(1)}</label>
+      <input type="time" id="wh-${day}-from" value="${d.open||'08:00'}"/>
+      <span style="font-size:.75rem;color:var(--color-text-muted)">to</span>
+      <input type="time" id="wh-${day}-to" value="${d.close||'17:00'}"/>
+    </div>`;
+  }).join('');
+}
+
+// ── Populate profile form ──
+function populateProfileForm() {
+  if (!institution) {
+    renderWorkingHours();
+    return;
+  }
+  document.getElementById('p-name').value = institution.name || '';
+  document.getElementById('p-desc').value = institution.description || '';
+  document.getElementById('p-category').value = institution.category || 'clinic';
+  document.getElementById('p-phone').value = institution.contact?.phone || '';
+  document.getElementById('p-email').value = institution.contact?.email || '';
+  document.getElementById('p-website').value = institution.contact?.website || '';
+  document.getElementById('p-address').value = institution.location?.address || '';
+  document.getElementById('p-city').value = institution.location?.city || '';
+  if (institution.location?.coordinates?.length === 2) {
+    profileLng = institution.location.coordinates[0];
+    profileLat = institution.location.coordinates[1];
+  }
+  document.getElementById('p-lat').value = profileLat.toFixed(6);
+  document.getElementById('p-lng').value = profileLng.toFixed(6);
+  if (profileMap && profileMarker) {
+    profileMarker.setLatLng([profileLat, profileLng]);
+    profileMap.setView([profileLat, profileLng], 14);
+  }
+  renderWorkingHours();
+
+  // Verification status display
+  const vs = institution.verificationStatus || 'pending';
+  const colors = { pending:'#f59e0b', verified:'#22c55e', rejected:'#ef4444', suspended:'#8b5cf6' };
+  const labels = { pending:'⏳ Pending Verification', verified:'✅ Verified', rejected:'❌ Rejected', suspended:'🟣 Suspended' };
+  const statusEl = document.getElementById('verification-status');
+  statusEl.innerHTML = `<div style="padding:.75rem 1rem;border-radius:10px;background:${colors[vs]}15;border:1px solid ${colors[vs]}40;color:${colors[vs]};font-weight:600;font-size:.85rem">${labels[vs]}${institution.verificationNote && vs==='rejected' ? '<br><span style="font-weight:400;font-size:.8rem">Reason: '+institution.verificationNote+'</span>':''}</div>`;
+
+  // Document preview
+  const docEl = document.getElementById('doc-preview');
+  if (institution.verificationDocument) {
+    docEl.innerHTML = `<div style="font-size:.8rem;color:var(--color-text-muted)">📄 Document: <strong>${institution.verificationDocument}</strong></div>`;
+  } else {
+    docEl.innerHTML = '<div style="font-size:.8rem;color:var(--color-text-muted)">No document uploaded yet.</div>';
+  }
+}
+
+// ── Save / Create profile ──
+async function saveProfile() {
+  const name = document.getElementById('p-name').value.trim();
+  const category = document.getElementById('p-category').value;
+  if (!name) { Toast.error('Institution name is required'); return; }
+  if (!profileLat || !profileLng) { Toast.error('Please set location on map'); return; }
+
+  const workingHours = {};
+  DAYS.forEach(day => {
+    workingHours[day] = {
+      isOpen: document.getElementById('wh-'+day+'-open').checked,
+      open: document.getElementById('wh-'+day+'-from').value || '08:00',
+      close: document.getElementById('wh-'+day+'-to').value || '17:00'
+    };
+  });
+
+  const data = {
+    name,
+    description: document.getElementById('p-desc').value.trim(),
+    category,
+    location: {
+      type: 'Point',
+      coordinates: [parseFloat(profileLng), parseFloat(profileLat)],
+      address: document.getElementById('p-address').value.trim(),
+      city: document.getElementById('p-city').value.trim(),
+      country: 'Algeria'
+    },
+    contact: {
+      phone: document.getElementById('p-phone').value.trim(),
+      email: document.getElementById('p-email').value.trim(),
+      website: document.getElementById('p-website').value.trim()
+    },
+    workingHours
+  };
+
+  const btn = document.getElementById('save-profile-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    let res;
+    if (institution && institution._id) {
+      res = await API.put('/institutions/' + institution._id, data);
+      institution = res.institution || institution;
+      Toast.success('Institution profile updated! Awaiting admin verification.');
+    } else {
+      res = await API.post('/institutions', data);
+      institution = res.institution;
+      Toast.success('Institution created! It will appear publicly after admin verification.');
+    }
+    renderInstitutionUI();
+    populateProfileForm();
+  } catch(err) {
+    const msg = err?.response?.data?.error || err?.response?.data?.errors?.[0]?.msg || 'Failed to save profile';
+    Toast.error(msg);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Save Profile';
+  }
+}
+
+// ── Tab switch hook for map ──
+const origSwitchTab = switchTab;
+switchTab = function(id) {
+  origSwitchTab(id);
+  if (id === 'profile') {
+    setTimeout(() => {
+      initProfileMap();
+      populateProfileForm();
+    }, 100);
+  }
+};
+
+// ── Document Upload ──
+document.getElementById('p-document').addEventListener('change', async function() {
+  if (!this.files.length) return;
+  if (!institution || !institution._id) { Toast.error('Save your profile first, then upload a document.'); this.value = ''; return; }
+  const btn = document.getElementById('upload-doc-btn');
+  btn.disabled = true; btn.textContent = 'Uploading...';
+  try {
+    const form = new FormData();
+    form.append('document', this.files[0]);
+    const res = await fetch(`http://localhost:5000/api/institutions/${institution._id}/upload-document`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('hojozat_token') },
+      body: form
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    institution.verificationDocument = data.filename;
+    if (data.verificationStatus) institution.verificationStatus = data.verificationStatus;
+    Toast.success('Document uploaded! Your institution will be reviewed by an admin.');
+    populateProfileForm();
+  } catch(e) { Toast.error(e.message || 'Upload failed'); }
+  finally { btn.disabled = false; btn.textContent = '📤 Choose & Upload Document'; this.value = ''; }
+});
+
+// ── Init ──
+loadInstitution();
+</script>
+</body>
+</html>

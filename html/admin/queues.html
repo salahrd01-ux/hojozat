@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Queue Monitoring – Hojozat Admin</title>
+<link rel="stylesheet" href="css/admin.css"/>
+<style>.queue-card{margin-bottom:1rem}.queue-entries{max-height:250px;overflow-y:auto;margin-top:.75rem}</style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="overlay" class="overlay"></div>
+<div class="admin-layout">
+<aside class="admin-sidebar" id="sidebar">
+  <div class="logo"><div class="logo-box">H</div><div><div style="font-weight:900;font-size:1rem">Hojozat</div><div style="font-size:.7rem;color:var(--muted)">Admin Panel</div></div></div>
+  <nav>
+    <a href="dashboard.html" class="nav-item"><span>📊</span> Dashboard</a>
+    <a href="institutions.html" class="nav-item"><span>🏥</span> Institutions</a>
+    <a href="users.html" class="nav-item"><span>👥</span> Users</a>
+    <a href="queues.html" class="nav-item active"><span>🎫</span> Queues</a>
+  </nav>
+  <div class="footer"><button class="nav-item" onclick="AdminAuth.logout()"><span>🚪</span> Logout</button></div>
+</aside>
+<main class="admin-main">
+  <div class="admin-topbar">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('overlay').classList.toggle('visible')">☰</button>
+      <h1>🎫 Live Queue Monitoring</h1>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="loadQueues()">🔄 Refresh</button>
+  </div>
+  <div class="admin-content">
+    <div class="stat-grid" id="queue-stats"></div>
+    <div id="queues-list"></div>
+  </div>
+</main>
+</div>
+<script src="js/admin.js"></script>
+<script>
+AdminAuth.require();
+document.getElementById('overlay').addEventListener('click',()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('visible');});
+
+async function loadQueues() {
+  try {
+    const res = await AdminAPI.get('/queues');
+    const queues = res.queues || [];
+    let totalActive = 0, totalWaiting = 0, totalServed = 0;
+    queues.forEach(q => { totalActive++; totalWaiting += q.waitingCount; totalServed += q.totalServedToday; });
+
+    document.getElementById('queue-stats').innerHTML = [
+      { icon:'🎫', val:totalActive, label:'Active Queues', bg:'#3b82f6' },
+      { icon:'⏱️', val:totalWaiting, label:'Total Waiting', bg:'#f59e0b' },
+      { icon:'✅', val:totalServed, label:'Served Today', bg:'#22c55e' }
+    ].map(s => `<div class="stat-card"><div class="icon">${s.icon}</div><div class="value" style="color:${s.bg}">${s.val}</div><div class="label">${s.label}</div></div>`).join('');
+
+    if (!queues.length) {
+      document.getElementById('queues-list').innerHTML = '<div class="card"><div class="empty-state"><div class="icon">😊</div><p>No active queues right now</p></div></div>';
+      return;
+    }
+
+    document.getElementById('queues-list').innerHTML = queues.map(q => `
+      <div class="card queue-card">
+        <div class="card-header">
+          <div>
+            <h2 style="display:flex;align-items:center;gap:.5rem">${escHtml(q.institutionName)} ${statusBadge(q.status)} ${q.isOpen?'<span class="badge badge-verified">Open</span>':'<span class="badge badge-rejected">Closed</span>'}</h2>
+            <div style="font-size:.8rem;color:var(--muted);margin-top:.25rem">${q.category||''} • ${q.waitingCount} waiting • ${q.totalServedToday} served today</div>
+          </div>
+          <div style="display:flex;gap:.35rem">
+            <button class="btn btn-danger btn-sm" onclick="forceClose('${q.institutionId}')">🔴 Force Close</button>
+          </div>
+        </div>
+        <div class="card-body">
+          ${q.inService ? `<div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:.75rem;margin-bottom:.75rem;display:flex;align-items:center;justify-content:space-between">
+            <div><span style="font-size:.8rem;color:var(--muted)">🩺 Currently Serving:</span><br><strong>${escHtml(q.inService.displayName)}</strong> — Ticket #${q.inService.ticketNumber}</div>
+          </div>` : '<div style="font-size:.85rem;color:var(--muted);margin-bottom:.5rem">No patient currently in service</div>'}
+          ${q.entries.length ? `<div class="queue-entries"><table><thead><tr><th>#</th><th>Name</th><th>Ticket</th><th>Type</th><th>Status</th><th>Joined</th><th></th></tr></thead><tbody>${q.entries.map(e => `<tr>
+            <td>${e.position}</td>
+            <td style="font-weight:600">${escHtml(e.displayName)}</td>
+            <td>#${e.ticketNumber}</td>
+            <td>${e.joinMethod==='remote'?'📱 Remote':'🚶 Walk-in'}</td>
+            <td>${e.status==='in_service'?'<span class="badge badge-verified">In Service</span>':'<span class="badge badge-pending">Waiting</span>'}</td>
+            <td>${new Date(e.joinedAt).toLocaleTimeString()}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="removePatient('${q.institutionId}','${e.id}')">🗑️</button></td>
+          </tr>`).join('')}</tbody></table></div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { Toast.error('Failed to load queues'); }
+}
+
+async function forceClose(instId) {
+  if (!confirm('Force close this queue? All patients will be removed.')) return;
+  try { await AdminAPI.patch(`/queues/${instId}/force-close`); Toast.success('Queue force closed'); loadQueues(); } catch { Toast.error('Failed'); }
+}
+
+async function removePatient(instId, entryId) {
+  if (!confirm('Remove this patient from the queue?')) return;
+  try { await AdminAPI.delete(`/queues/${instId}/entry/${entryId}`); Toast.success('Patient removed'); loadQueues(); } catch { Toast.error('Failed'); }
+}
+
+loadQueues();
+setInterval(loadQueues, 15000); // Auto-refresh every 15s
+</script>
+</body>
+</html>

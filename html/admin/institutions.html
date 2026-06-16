@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Institution Management – Hojozat Admin</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="css/admin.css"/>
+<style>#review-map{height:220px;border-radius:10px;margin:.75rem 0;border:1px solid var(--border);z-index:0}</style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="overlay" class="overlay"></div>
+<!-- Review Modal -->
+<div class="modal-overlay" id="review-modal">
+<div class="modal-box">
+  <div class="modal-header"><h3 id="review-title">Review Institution</h3><button class="close-btn" onclick="closeReview()">✕</button></div>
+  <div class="modal-body" id="review-body"></div>
+  <div class="modal-footer" id="review-actions"></div>
+</div>
+</div>
+<div class="admin-layout">
+<aside class="admin-sidebar" id="sidebar">
+  <div class="logo"><div class="logo-box">H</div><div><div style="font-weight:900;font-size:1rem">Hojozat</div><div style="font-size:.7rem;color:var(--muted)">Admin Panel</div></div></div>
+  <nav>
+    <a href="dashboard.html" class="nav-item"><span>📊</span> Dashboard</a>
+    <a href="institutions.html" class="nav-item active"><span>🏥</span> Institutions</a>
+    <a href="users.html" class="nav-item"><span>👥</span> Users</a>
+    <a href="queues.html" class="nav-item"><span>🎫</span> Queues</a>
+  </nav>
+  <div class="footer"><button class="nav-item" onclick="AdminAuth.logout()"><span>🚪</span> Logout</button></div>
+</aside>
+<main class="admin-main">
+  <div class="admin-topbar">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="mobile-menu" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('overlay').classList.toggle('visible')">☰</button>
+      <h1>🏥 Institution Management</h1>
+    </div>
+  </div>
+  <div class="admin-content">
+    <div class="search-bar">
+      <input type="text" class="input" placeholder="Search by name, email, phone..." id="search-input"/>
+      <button class="btn btn-primary" onclick="loadInstitutions()">🔍 Search</button>
+    </div>
+    <div class="filter-tabs" id="filter-tabs">
+      <button class="filter-tab active" data-status="all">All</button>
+      <button class="filter-tab" data-status="pending">⏳ Pending</button>
+      <button class="filter-tab" data-status="verified">✅ Verified</button>
+      <button class="filter-tab" data-status="rejected">❌ Rejected</button>
+      <button class="filter-tab" data-status="suspended">🟣 Suspended</button>
+    </div>
+    <div class="card">
+      <div class="card-body table-wrap" id="table-container"></div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:.5rem;margin-top:1rem" id="pagination"></div>
+  </div>
+</main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/admin.js"></script>
+<script>
+AdminAuth.require();
+let currentStatus = 'all', currentPage = 1, reviewMap = null;
+
+document.getElementById('overlay').addEventListener('click',()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('visible');});
+document.querySelectorAll('.filter-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentStatus = btn.dataset.status; currentPage = 1;
+    loadInstitutions();
+  });
+});
+document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadInstitutions(); });
+
+async function loadInstitutions() {
+  const container = document.getElementById('table-container');
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Loading...</p></div>';
+  try {
+    const search = document.getElementById('search-input').value.trim();
+    const res = await AdminAPI.get('/institutions', { status: currentStatus, search, page: currentPage, limit: 15 });
+    const list = res.institutions || [];
+    if (!list.length) { container.innerHTML = '<div class="empty-state"><div class="icon">🏥</div><p>No institutions found</p></div>'; document.getElementById('pagination').innerHTML=''; return; }
+    container.innerHTML = `<table><thead><tr><th>Name</th><th>Category</th><th>Status</th><th>Phone</th><th>Owner</th><th>Registered</th><th>Actions</th></tr></thead><tbody>${list.map(i => `<tr>
+      <td style="font-weight:600">${escHtml(i.name)}</td>
+      <td style="text-transform:capitalize">${i.category||'—'}</td>
+      <td>${statusBadge(i.verificationStatus)}</td>
+      <td>${escHtml(i.contact?.phone||'—')}</td>
+      <td>${escHtml(i.owner?.name||'—')}</td>
+      <td>${formatDate(i.createdAt)}</td>
+      <td class="actions-cell">
+        <button class="btn btn-primary btn-sm" onclick="openReview('${i._id}')">📋 Review</button>
+        ${i.verificationStatus==='pending'?`<button class="btn btn-success btn-sm" onclick="quickAction('${i._id}','verify')">✅</button><button class="btn btn-danger btn-sm" onclick="quickAction('${i._id}','reject')">❌</button>`:''}
+        ${i.verificationStatus==='verified'?`<button class="btn btn-warning btn-sm" onclick="quickAction('${i._id}','suspend')">⏸️</button>`:''}
+        ${['rejected','suspended'].includes(i.verificationStatus)?`<button class="btn btn-success btn-sm" onclick="quickAction('${i._id}','verify')">✅ Approve</button>`:''}
+        <button class="btn btn-danger btn-sm" onclick="deleteInst('${i._id}','${escHtml(i.name)}')">🗑️</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+
+    // Pagination
+    const pag = document.getElementById('pagination');
+    if (res.pages > 1) {
+      let h = '';
+      for (let p = 1; p <= res.pages; p++) h += `<button class="btn ${p===res.page?'btn-primary':'btn-ghost'} btn-sm" onclick="currentPage=${p};loadInstitutions()">${p}</button>`;
+      pag.innerHTML = h;
+    } else pag.innerHTML = '';
+  } catch(e) { container.innerHTML = '<div class="empty-state"><div class="icon">❌</div><p>Failed to load</p></div>'; }
+}
+
+async function openReview(id) {
+  try {
+    const res = await AdminAPI.get(`/institutions/${id}`);
+    const i = res.institution;
+    const q = res.queueInfo;
+    document.getElementById('review-title').textContent = `Review: ${i.name}`;
+    document.getElementById('review-body').innerHTML = `
+      <div style="margin-bottom:1rem">
+        <div class="info-row"><span class="label">Name</span><span style="font-weight:600">${escHtml(i.name)}</span></div>
+        <div class="info-row"><span class="label">Category</span><span style="text-transform:capitalize">${i.category||'—'}</span></div>
+        <div class="info-row"><span class="label">Status</span>${statusBadge(i.verificationStatus)}</div>
+        <div class="info-row"><span class="label">Description</span><span>${escHtml(i.description||'No description')}</span></div>
+        <div class="info-row"><span class="label">Phone</span><span>${escHtml(i.contact?.phone||'—')}</span></div>
+        <div class="info-row"><span class="label">Email</span><span>${escHtml(i.contact?.email||'—')}</span></div>
+        <div class="info-row"><span class="label">Address</span><span>${escHtml(i.location?.address||'—')}, ${escHtml(i.location?.city||'')}</span></div>
+        <div class="info-row"><span class="label">Owner</span><span>${escHtml(i.owner?.name||'—')} (${escHtml(i.owner?.email||'')})</span></div>
+        <div class="info-row"><span class="label">Registered</span><span>${formatDateTime(i.createdAt)}</span></div>
+        <div class="info-row"><span class="label">Queue</span><span>${q.currentSize} active / ${q.totalServedToday} served today</span></div>
+        ${i.verificationNote?`<div class="info-row"><span class="label">Admin Note</span><span>${escHtml(i.verificationNote)}</span></div>`:''}
+        ${i.verifiedAt?`<div class="info-row"><span class="label">Verified At</span><span>${formatDateTime(i.verifiedAt)}</span></div>`:''}
+      </div>
+      ${i.verificationDocument?`<div><strong style="font-size:.85rem">📄 Verification Document</strong><div class="doc-preview"><img src="${API_URL.replace('/api','')}/uploads/${i.verificationDocument}" alt="Verification document" onerror="this.parentElement.innerHTML='<p style=\\'color:var(--muted);padding:1rem\\'>Document not available</p>'"/></div></div>`:'<p style="color:var(--muted);font-size:.85rem">📄 No verification document uploaded</p>'}
+      <div id="review-map"></div>
+    `;
+
+    // Map
+    setTimeout(() => {
+      const mapEl = document.getElementById('review-map');
+      if (mapEl && i.location?.coordinates?.length === 2) {
+        if (reviewMap) { reviewMap.remove(); reviewMap = null; }
+        const [lng, lat] = i.location.coordinates;
+        reviewMap = L.map('review-map').setView([lat, lng], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OSM' }).addTo(reviewMap);
+        L.marker([lat, lng]).addTo(reviewMap).bindPopup(i.name).openPopup();
+      } else { mapEl.style.display = 'none'; }
+    }, 150);
+
+    // Action buttons
+    let actions = `<button class="btn btn-ghost" onclick="closeReview()">Close</button>`;
+    if (i.verificationStatus !== 'verified') actions += `<button class="btn btn-success" onclick="doAction('${i._id}','verify')">✅ Approve</button>`;
+    if (i.verificationStatus !== 'rejected') actions += `<button class="btn btn-danger" onclick="doAction('${i._id}','reject')">❌ Reject</button>`;
+    if (i.verificationStatus === 'verified') actions += `<button class="btn btn-warning" onclick="doAction('${i._id}','suspend')">⏸️ Suspend</button>`;
+    document.getElementById('review-actions').innerHTML = actions;
+
+    document.getElementById('review-modal').classList.add('visible');
+  } catch(e) { Toast.error('Failed to load institution'); }
+}
+
+function closeReview() { document.getElementById('review-modal').classList.remove('visible'); if (reviewMap) { reviewMap.remove(); reviewMap = null; } }
+
+async function doAction(id, action) {
+  const note = action === 'reject' ? prompt('Reason for rejection (optional):') : '';
+  try {
+    await AdminAPI.patch(`/institutions/${id}/${action}`, { note: note || '' });
+    Toast.success(`Institution ${action === 'verify' ? 'approved' : action + 'ed'}!`);
+    closeReview();
+    loadInstitutions();
+  } catch(e) { Toast.error(e?.response?.data?.error || 'Action failed'); }
+}
+
+async function quickAction(id, action) {
+  const note = action === 'reject' ? prompt('Reason for rejection:') : '';
+  try {
+    await AdminAPI.patch(`/institutions/${id}/${action}`, { note: note || '' });
+    Toast.success(`Institution ${action === 'verify' ? 'approved' : action + 'ed'}!`);
+    loadInstitutions();
+  } catch(e) { Toast.error('Action failed'); }
+}
+
+async function deleteInst(id, name) {
+  if (!confirm(`Delete "${name}" permanently? This cannot be undone.`)) return;
+  try {
+    await AdminAPI.delete(`/institutions/${id}`);
+    Toast.success('Institution deleted');
+    loadInstitutions();
+  } catch(e) { Toast.error('Delete failed'); }
+}
+
+// Auto-open review from URL param
+const params = new URLSearchParams(window.location.search);
+if (params.get('status')) {
+  currentStatus = params.get('status');
+  document.querySelectorAll('.filter-tab').forEach(b => { b.classList.toggle('active', b.dataset.status === currentStatus); });
+}
+loadInstitutions();
+if (params.get('review')) setTimeout(() => openReview(params.get('review')), 500);
+</script>
+</body>
+</html>

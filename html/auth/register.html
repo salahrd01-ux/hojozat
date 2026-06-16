@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register – Hojozat</title>
+    <link rel="stylesheet" href="../css/styles.css" />
+    <style>
+        body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: var(--color-bg); }
+        .register-card { width: 100%; max-width: 28rem; animation: fadeIn 0.4s ease; }
+        .logo-link { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 2rem; text-decoration: none; }
+        .logo-box {
+            width: 2.5rem; height: 2.5rem;
+            background: linear-gradient(135deg, #3b82f6, #7c3aed);
+            border-radius: 0.75rem; display: flex; align-items: center;
+            justify-content: center; color: white; font-weight: 900; font-size: 1.25rem;
+        }
+        .input-group { margin-bottom: 1rem; }
+        label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--color-text); margin-bottom: 0.375rem; }
+        .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .role-btn {
+            padding: 0.75rem; border-radius: 0.75rem; border: 2px solid var(--color-border);
+            background: var(--color-card); cursor: pointer; text-align: left;
+            transition: all 0.2s; color: var(--color-text);
+        }
+        .role-btn.selected { border-color: #3b82f6; background: rgba(59,130,246,0.08); }
+        .role-btn-title { font-weight: 600; font-size: 0.9rem; display: block; }
+        .role-btn-desc { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.25rem; display: block; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .form-footer { text-align: center; margin-top: 1.5rem; color: var(--color-text-muted); }
+        .form-footer a { color: #3b82f6; font-weight: 600; }
+        .spinning { animation: spinAnim 0.8s linear infinite; display: inline-block; }
+    </style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<div class="register-card">
+    <a href="../index.html" class="logo-link">
+        <div class="logo-box">H</div>
+        <span class="font-black text-xl gradient-text">Hojozat</span>
+    </a>
+
+    <h1 style="font-size:1.875rem; font-weight:900; color:var(--color-text); margin-bottom:0.5rem;">Create Account</h1>
+    <p style="color:var(--color-text-muted); margin-bottom:2rem;">Join thousands of users managing queues smartly</p>
+
+    <form id="register-form">
+        <!-- Role Selection -->
+        <div class="input-group">
+            <label>I am a...</label>
+            <div class="role-grid">
+                <button type="button" class="role-btn selected" id="role-user">
+                    <span class="role-btn-title">👤 Regular User</span>
+                    <span class="role-btn-desc">Join queues remotely</span>
+                </button>
+                <button type="button" class="role-btn" id="role-institution">
+                    <span class="role-btn-title">🏥 Institution</span>
+                    <span class="role-btn-desc">Manage your queue</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Name & Phone -->
+        <div class="two-col">
+            <div class="input-group">
+                <label for="reg-name">Name</label>
+                <input type="text" id="reg-name" class="input" placeholder="John Doe" required />
+            </div>
+            <div class="input-group">
+                <label for="reg-phone">Phone</label>
+                <input type="tel" id="reg-phone" class="input" placeholder="+213 555 ..." />
+            </div>
+        </div>
+
+        <!-- Email -->
+        <div class="input-group">
+            <label for="reg-email">Email</label>
+            <input type="email" id="reg-email" class="input" placeholder="you@example.com" required />
+        </div>
+
+        <!-- Password -->
+        <div class="input-group">
+            <label for="reg-password">Password</label>
+            <input type="password" id="reg-password" class="input" placeholder="At least 6 characters" required />
+            <div class="pwd-strength" id="pwd-strength" style="display:none;">
+                <div class="pwd-fill" id="pwd-fill"></div>
+            </div>
+        </div>
+
+
+        <button type="submit" class="btn btn-primary w-full" id="register-submit"
+            style="padding:0.875rem; font-size:1rem;">
+            Create Account 🚀
+        </button>
+    </form>
+
+    <p class="form-footer">
+        Already have an account? <a href="login.html">Login →</a>
+    </p>
+</div>
+
+<script src="../js/app.js"></script>
+<script>
+    // Redirect if already logged in
+    const existingUser = Auth.getUser();
+    if (existingUser) {
+        if (existingUser.role === 'institution') window.location.href = '../institution/dashboard.html';
+        else window.location.href = '../dashboard.html';
+    }
+
+    let selectedRole = 'user';
+
+    function selectRole(role) {
+        selectedRole = role;
+        document.getElementById('role-user').classList.toggle('selected', role === 'user');
+        document.getElementById('role-institution').classList.toggle('selected', role === 'institution');
+    }
+
+    document.getElementById('role-user').addEventListener('click', () => selectRole('user'));
+    document.getElementById('role-institution').addEventListener('click', () => selectRole('institution'));
+
+    function updatePasswordStrength(val) {
+        const bar = document.getElementById('pwd-strength');
+        const fill = document.getElementById('pwd-fill');
+        if (!val) { bar.style.display = 'none'; return; }
+        bar.style.display = '';
+        fill.className = 'pwd-fill ' + (val.length >= 10 ? 'pwd-strong' : val.length >= 6 ? 'pwd-medium' : 'pwd-weak');
+    }
+
+    document.getElementById('reg-password').addEventListener('input', (e) => updatePasswordStrength(e.target.value));
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = document.getElementById('reg-password').value;
+        if (password.length < 6) { Toast.error('Password must be at least 6 characters'); return; }
+
+        const data = {
+            name:     document.getElementById('reg-name').value.trim(),
+            email:    document.getElementById('reg-email').value.trim(),
+            password,
+            phone:    document.getElementById('reg-phone').value.trim(),
+            role:     selectedRole,
+        };
+
+        const btn = document.getElementById('register-submit');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinning">⟳</span> Creating...';
+
+        try {
+            const user = await Auth.register(data);
+            Toast.success(`Account created! Welcome, ${user.name}! 🎉`);
+            setTimeout(() => {
+                if (user.role === 'institution') window.location.href = '../institution/dashboard.html';
+                else window.location.href = '../dashboard.html';
+            }, 800);
+        } catch (err) {
+            const msg = err?.response?.data?.error
+                || err?.response?.data?.errors?.[0]?.msg
+                || 'Registration failed. Please try again.';
+            Toast.error(msg);
+            btn.disabled = false;
+            btn.textContent = 'Create Account 🚀';
+        }
+    });
+</script>
+</body>
+</html>
