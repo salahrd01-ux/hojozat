@@ -22,7 +22,7 @@ const { socketHandler } = require('./socket/socketHandler');
 const app    = express();
 const server = http.createServer(app);
 
-// Allow any localhost origin (file://, http://localhost:*)
+// Allow any localhost origin and production URL
 const allowedOrigins = [
     process.env.FRONTEND_URL || 'http://localhost:3000',
     'https://hojozat.vercel.app',
@@ -152,12 +152,13 @@ app.use((req, res, next) => {
             });
 
             // Production-grade Content Security Policy
+            // تمت إضافة 'self' و wss:// لدعم اتصالات WebSocket السحابية على الـ ديمين الخاص بـ Render مجاناً
             res.setHeader('Content-Security-Policy', [
                 `default-src 'self'`,
                 `script-src 'self' 'nonce-${nonce}' https://unpkg.com https://cdn.socket.io https://cdn.jsdelivr.net`,
                 `style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com https://cdn.jsdelivr.net`,
                 `img-src 'self' data: https://unpkg.com https://*.tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org`,
-                `connect-src 'self' ws://localhost:5000 http://localhost:5000 ws://127.0.0.1:5000 http://127.0.0.1:5000 https://router.project-osrm.org https://*.tile.openstreetmap.org https://unpkg.com https://cdn.socket.io https://cdn.jsdelivr.net`,
+                `connect-src 'self' ws://localhost:5000 http://localhost:5000 ws://127.0.0.1:5000 http://127.0.0.1:5000 wss://*.onrender.com https://*.onrender.com https://router.project-osrm.org https://*.tile.openstreetmap.org https://unpkg.com https://cdn.socket.io https://cdn.jsdelivr.net`,
                 `font-src 'self' https://fonts.gstatic.com`,
                 `object-src 'none'`,
                 `base-uri 'self'`,
@@ -231,7 +232,8 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
-    server.listen(PORT, () => {
+    // التعديل الجوهري: إضافة المعامل '0.0.0.0' لكي يستمع السيرفر للطلبات الخارجية القادمة عبر Render
+    server.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Hojozat Server running on port ${PORT}`);
         console.log(`📡 WebSocket server ready`);
         console.log(`🌐 CORS enabled for all origins in development`);
